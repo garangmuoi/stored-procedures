@@ -21,7 +21,6 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessUser]
 	@OpinionType INT,
 	@ReturnStatus BIT = NULL,
 	@SendType INT = 1,
-	@ProsessRoleId INT = NULL,
 	@ExpiredDate DATETIME = NULL,
 	@CompleteDate DATETIME = NULL,
     @Recipients XML
@@ -40,15 +39,17 @@ BEGIN
         (
             RecipientId INT,
             RecipientName NVARCHAR(255),
-            RecipientRoleId INT
+            RecipientRoleId INT,
+            RecipientProsessRoleId INT
         );
 
         -- Parse the XML into the temp table #Recipients
-        INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId)
+        INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId)
         SELECT 
             x.v.value('(UserId)[1]', 'INT') AS RecipientId,
             x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
-            x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId
+            x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
+			x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId
         FROM @Recipients.nodes('/Recipients/Recipient') x(v);
 
         /*******************************************************************************
@@ -117,7 +118,7 @@ BEGIN
             @SendType,
             RecipientId,
             RecipientRoleId,
-            @ProsessRoleId,
+            RecipientProsessRoleId,
 			@current_date,
 			@ExpiredDate,
 			@CompleteDate
