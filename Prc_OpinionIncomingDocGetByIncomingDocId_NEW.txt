@@ -1,0 +1,97 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]    Script Date: 9/14/2025 10:15:56 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		Hung Tran
+-- Create date:	18-04-2018
+-- Description:	<Description,,>
+-- =============================================
+ALTER procedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId bigint,
+    @OpinionType INT = NULL
+as
+begin
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering SELECT statements.
+    set nocount on;
+
+    begin try
+        /*******************************************************************************
+        * Add SQL statment(s) here.
+        * Build up some dynamic SQL to do the search
+        *******************************************************************************/
+
+        select oid.Id
+              ,oid.IncomingDocId
+              ,oid.OpinionUserId
+              ,oid.Opinion
+              ,oid.Status
+              ,oid.OpinionDate
+              ,oid.OpinionType
+              ,oid.OpinionUserRoleId
+              ,oid.UserReceive
+              ,oid.UserReceiveName
+              ,UserReceiveDepartmentId = s_receive.DepartmentId
+              ,UserReceiveDepartmentName = d.Name
+              ,oid.SendDate            
+              ,oid.ExpiredDate         
+              ,oid.CompleteDate       
+			  ,concat(s_send.FirstName, '',s_send.LastName) as OpinionUserName
+			  ,r.Name as OpinionUserRoleName
+        from edoc.OpinionIncomingDoc (nolock) oid
+        LEFT JOIN dbo.Staff (nolock) s_send on oid.OpinionUserId = s_send.Id
+        LEFT JOIN dbo.Staff (NOLOCK) s_receive ON oid.UserReceive = s_receive.Id
+        LEFT JOIN dbo.Department (NOLOCK) d ON s_receive.DepartmentId = d.Id
+        LEFT JOIN dbo.Role (nolock)  r on r.Id = oid.OpinionUserRoleId
+        where oid.IncomingDocId = @IncomingDocId
+        AND (@OpinionType IS NULL OR oid.OpinionType = @OpinionType)
+        ORDER BY oid.OpinionDate;
+
+    /*******************************************************************************
+    * End of SQL statment(s).
+    *******************************************************************************/
+    end try
+    begin catch
+        declare @ErrorMessage   nvarchar(max)
+               ,@ErrorNumber    int
+               ,@ErrorSeverity  int
+               ,@ErrorState     int
+               ,@ErrorLine      int
+               ,@ErrorProcedure nvarchar(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        select @ErrorNumber    = error_number()
+              ,@ErrorSeverity  = error_severity()
+              ,@ErrorState     = error_state()
+              ,@ErrorLine      = error_line()
+              ,@ErrorProcedure = isnull(error_procedure(), '-');
+
+        -- Build the message string that will contain original error information.
+        select @ErrorMessage = concat(N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ', error_message());
+
+        -- Only set the error state if its been set to zero
+        if (@ErrorState = 0)
+            set @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        raiserror(@ErrorMessage
+                 ,@ErrorSeverity
+                 ,@ErrorState
+                 ,@ErrorNumber    -- parameter: original error number.
+                 ,@ErrorSeverity  -- parameter: original error severity.
+                 ,@ErrorState     -- parameter: original error state.
+                 ,@ErrorProcedure -- parameter: original error procedure name.
+                 ,@ErrorLine      -- parameter: original error line number.
+        );
+    end catch;
+
+    set nocount off;
+end;
+

@@ -1,0 +1,108 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_OpinionMinistryOfficeLeader]    Script Date: 9/12/2025 1:41:02 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		Tran Duc Binh
+-- Create date:	9/11/2025
+-- Description:	Ministry Office Leader give an opinion to incoming document by updating status
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_OpinionMinistryOfficeLeader]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId BIGINT,
+    @UserId INT,
+    @RoleId INT,
+    @Opinion NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    -- SET NOCOUNT ON;
+
+    BEGIN TRY
+        --
+        -- All other declarations and initialisation
+        --
+        DECLARE @current_date DATETIME = GETDATE()
+
+        /*******************************************************************************
+		* Add SQL statement(s) here.
+		* Update status, log opinion, and retrieve history
+		*******************************************************************************/
+
+        -- Update the IncomingDoc status to 2
+        UPDATE edoc.IncomingDoc
+        SET Status = 2,
+            ReturnStatus = 0,
+            ModifiedUserId = @UserId,
+            ModifiedDate = @current_date
+        WHERE Id = @IncomingDocId;
+
+        -- Insert opinion into OpinionIncomingDoc if provided
+        BEGIN
+            SET @Opinion = ISNULL(@Opinion, N'Lãnh Đạo Văn Phòng Bộ cho ý kiến');
+
+            INSERT INTO edoc.OpinionIncomingDoc (
+                IncomingDocId,
+                OpinionUserId,
+                Opinion,
+                Status,
+                OpinionDate,
+                OpinionType,
+                OpinionUserRoleId
+            )
+            VALUES (
+                @IncomingDocId,
+                @UserId,
+                @Opinion,
+                1,
+                @current_date,
+                1, -- Opinion
+                @RoleId
+            );
+        END;
+
+    /*******************************************************************************
+		* End of SQL statement(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+
+    SET NOCOUNT OFF;
+END;

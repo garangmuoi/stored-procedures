@@ -1,0 +1,149 @@
+USE [DHTN-2025]
+GO
+
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_TransferMinistryLeader]    Script Date: 9/12/2025 2:56:00 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		Tran Duc Binh
+-- Create date:	9/11/2025
+-- Description:	Transfer incoming document to Ministry Leader by updating status and logging document transfer to recipients.
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_TransferMinistryLeader]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId BIGINT,
+    @UserId INT,
+    @RoleId INT = NULL,
+    @RecipientIds, XML -- List of RecipientIds to transfer the document to
+	@UserReceiveRoleId,
+	@ProsessRoleId
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    -- SET NOCOUNT ON;
+
+    BEGIN TRY
+        --
+        -- All other declarations and initialisation
+        --
+        DECLARE @current_date DATETIME = GETDATE(),
+                @OpinionUserRoleId INT = 0; -- Default to 0 if no role is found
+
+        -- Declare temp table to parse RecipientIds
+        IF OBJECT_ID('tempdb..#RecipientIds') IS NOT NULL
+            DROP TABLE #RecipientIds;
+        CREATE TABLE #RecipientIds
+        (
+            RecipientId INT
+        );
+
+        -- Parse the XML into the temp table #RecipientIds
+        INSERT INTO #RecipientIds (RecipientId)
+        SELECT x.v.value('.', 'INT') AS RecipientId
+        FROM @RecipientIds.nodes('/RecipientIds/RecipientId') x(v);
+
+        /*******************************************************************************
+		* Add SQL statement(s) here.
+		* Update status, log opinion, and transfer to recipients
+		*******************************************************************************/
+
+        -- Update the IncomingDoc status to 4
+        UPDATE edoc.IncomingDoc
+        SET Status = 4,
+            ReturnStatus = 0,
+            ModifiedUserId = @UserId,
+            ModifiedDate = @current_date
+        WHERE Id = @IncomingDocId;
+
+        -- Insert opinion into OpinionIncomingDoc
+        BEGIN
+            SET @Opinion = ISNULL(@Opinion, N'Trình Lãnh Đạo Bộ');
+
+            INSERT INTO edoc.OpinionIncomingDoc (
+                IncomingDocId,
+                OpinionUserId,
+                Opinion,
+                Status,
+                OpinionDate,
+                OpinionType,
+                OpinionUserRoleId
+            )
+            VALUES (
+                @IncomingDocId,
+                @UserId,
+                @Opinion,
+                1, -- Status 1 for active opinion
+                @current_date,
+                2, -- History
+                @RoleId
+            );
+        END;
+
+        -- Insert recipients into UserIncomingDoc
+        INSERT INTO edoc.UserIncomingDoc (
+            IncomingDocId,
+            UserSend,
+            UserReceive,
+            SendDate,
+            Status,
+            SendType,
+            UserSendRoleId,
+			UserReceiveRoleId,
+			ProsessRoleId
+        )
+        SELECT 
+            @IncomingDocId,
+            @UserId,
+            RecipientId,
+            @current_date,
+            0,
+            1, -- SendType = 1 (chuyển cá nhân)
+            @RoleId,
+			@UserReceiveRoleId,
+			@ProsessRoleId
+        FROM #RecipientIds;
+
+    /*******************************************************************************
+		* End of SQL statement(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+
+    SET NOCOUNT OFF;
+END;
