@@ -21,8 +21,6 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]
     @IncomingDocIds XML
 AS
 BEGIN
-    SET NOCOUNT ON;
-
     BEGIN TRY
         --
         -- All other declarations and initialisation
