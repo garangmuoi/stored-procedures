@@ -30,7 +30,12 @@ BEGIN
         --
         -- All other declarations and initialisation
         --
-        DECLARE @current_date DATETIME = GETDATE()
+        DECLARE @current_date DATETIME = GETDATE(),
+                @UserSendStatus INT = NULL
+        
+        SELECT @UserSendStatus = Status
+        FROM edoc.IncomingDoc
+        WHERE Id = @IncomingDocId;
 
         -- Declare temp table to parse Recipients
         IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
@@ -108,7 +113,9 @@ BEGIN
             ProsessRoleId,
 			SendDate,
 			ExpiredDate,
-			CompleteDate
+			CompleteDate,
+			UserSendStatus,
+			UserReceiveStatus
         )
         SELECT 
             @IncomingDocId,
@@ -121,7 +128,9 @@ BEGIN
             RecipientProsessRoleId,
 			@current_date,
 			@ExpiredDate,
-			@CompleteDate
+			@CompleteDate,
+			@UserSendStatus,
+			@Status
         FROM #Recipients
         WHERE RecipientId IS NOT NULL;
 
