@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]    Script Date: 9/15/2025 3:04:51 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -22,6 +22,7 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]
 AS
 BEGIN
     BEGIN TRY
+    BEGIN TRANSACTION;
         --
         -- All other declarations and initialisation
         --
@@ -99,8 +100,10 @@ BEGIN
         -- Clean up temporary table
         DROP TABLE #IncomingDocIds;
 
+    COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
+        ROLLBACK TRANSACTION;
         DECLARE @ErrorMessage NVARCHAR(MAX),
                 @ErrorNumber INT,
                 @ErrorSeverity INT,
@@ -134,4 +137,3 @@ BEGIN
                  );
     END CATCH;
 END;
-GO

@@ -1,0 +1,91 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging]    Script Date: 9/15/2025 4:26:39 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [edoc].[Prc_GetInterOrganizationPaging]
+    @SearchText NVARCHAR(250) = NULL,
+    @PageNumber INT = 1,
+    @PageSize INT = 10,
+    @OrgType NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @TotalRowCount INT;
+
+    -- Tạo bảng tạm vật lý
+    CREATE TABLE #OrgTypeTable (OrgType INT);
+
+    IF @OrgType IS NOT NULL AND @OrgType <> '-1000'
+    BEGIN
+        INSERT INTO #OrgTypeTable (OrgType)
+        SELECT CAST(value AS INT)
+        FROM dbo.SplitString(@OrgType, ',');
+    END
+
+    -- Đếm tổng số dòng
+    SELECT @TotalRowCount = COUNT(*)
+    FROM [DHTN-2025].edoc.InterOrganization
+    WHERE 
+        IsDeleted = 0
+        AND (
+            (@OrgType = '-1000' AND OrganID = @SearchText)
+            OR
+            (@OrgType <> '-1000' AND 
+                (@SearchText IS NULL OR 
+                 OrganName LIKE '%' + @SearchText + '%' OR 
+                 FastTypeCode LIKE '%' + @SearchText + '%')
+                AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
+            )
+        );
+
+    -- Lấy dữ liệu phân trang
+    SELECT
+        OrganID,
+        OrganizationIncharge,
+        OrganName,
+        OrganAdd,
+        Email,
+        Telephone,
+        Fax,
+        Website,
+        Password,
+        ID_DONVI,
+        ParentId,
+        CAPCQ,
+        ProvinceId,
+        OrganTypeId,
+        OrganizationInChargeId,
+        Status,
+        OrgType,
+        FastTypeCode,
+        IsDeleted,
+        InOrder,
+        IsDigitalOption,
+        @PageNumber AS PageNumber,
+        @PageSize AS PageSize,
+        CEILING(CAST(@TotalRowCount AS DECIMAL) / @PageSize) AS Total
+    FROM [DHTN-2025].edoc.InterOrganization
+    WHERE 
+        IsDeleted = 0
+        AND (
+            (@OrgType = '-1000' AND OrganID = @SearchText)
+            OR
+            (@OrgType <> '-1000' AND 
+                (@SearchText IS NULL OR 
+                 OrganName LIKE '%' + @SearchText + '%' OR 
+                 FastTypeCode LIKE '%' + @SearchText + '%')
+                AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
+            )
+        )
+    ORDER BY 
+        InOrder DESC,
+        OrganID ASC
+    OFFSET (@PageNumber - 1) * @PageSize ROWS
+    FETCH NEXT @PageSize ROWS ONLY;
+
+    DROP TABLE #OrgTypeTable;
+END
