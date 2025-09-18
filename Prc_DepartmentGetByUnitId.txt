@@ -1,0 +1,133 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [dbo].[Prc_DepartmentGetByUnitId]    Script Date: 9/16/2025 2:47:42 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- =============================================
+-- Author:		Tran Viet Hung
+-- Create date:	08-06-2016
+-- Description:	<Description,,>
+-- =============================================
+ALTER procedure [dbo].[Prc_DepartmentGetByUnitId]
+    -- Add the parameters for the stored procedure here
+    @UnitId int
+as
+begin
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    set nocount on;
+
+    begin try
+        /*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+
+        ;with Temp
+         as (
+                select Id,
+                       Code,
+                       Name,
+                       ParentId,
+                       IsUnit,
+                       AllowDocBook,
+                       SortOrder,
+                       Level,
+                       Description,
+                       IsLocked
+                  from dbo.Department (nolock)
+                 where Id          = @UnitId
+                     and IsDeleted = 0
+                union all
+                select d.Id,
+                       d.Code,
+                       d.Name,
+                       d.ParentId,
+                       d.IsUnit,
+                       d.AllowDocBook,
+                       d.SortOrder,
+                       d.Level,
+                       d.Description,
+                       d.IsLocked
+                  from Temp t,
+                       dbo.Department (nolock) d
+                 where t.Id          = d.ParentId
+                     and d.IsDeleted = 0
+            )
+        select t.Id,
+               t.Code,
+               t.Name,
+               t.ParentId,
+               t.IsUnit,
+               t.AllowDocBook,
+               t.SortOrder,
+               t.Level,
+               t.Description,
+               t.IsLocked
+          from Temp t
+         order by t.Level asc,
+                  t.SortOrder asc;
+
+    /*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    end try
+    begin catch
+        declare @ErrorMessage   nvarchar(max),
+                @ErrorNumber    int,
+                @ErrorSeverity  int,
+                @ErrorState     int,
+                @ErrorLine      int,
+                @ErrorProcedure nvarchar(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        select @ErrorNumber    = error_number (),
+               @ErrorSeverity  = error_severity (),
+               @ErrorState     = error_state (),
+               @ErrorLine      = error_line (),
+               @ErrorProcedure = isnull (error_procedure (), '-');
+
+        -- Build the message string that will contain original error information.
+        select @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + error_message ();
+
+        -- Only set the error state if its been set to zero
+        if (@ErrorState = 0)
+            set @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        raiserror (   @ErrorMessage,
+                      @ErrorSeverity,
+                      @ErrorState,
+                      @ErrorNumber,    -- parameter: original error number.
+                      @ErrorSeverity,  -- parameter: original error severity.
+                      @ErrorState,     -- parameter: original error state.
+                      @ErrorProcedure, -- parameter: original error procedure name.
+                      @ErrorLine       -- parameter: original error line number.
+                  );
+    end catch;
+
+    set nocount off;
+end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

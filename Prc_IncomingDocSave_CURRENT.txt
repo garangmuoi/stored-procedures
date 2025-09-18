@@ -1,0 +1,252 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocSave]    Script Date: 9/14/2025 3:52:36 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [edoc].[Prc_IncomingDocSave]
+    @Id BIGINT,
+    @UnitId INT,
+    @ReceivedDate DATETIME,
+    @Number INT,
+    @Notation NVARCHAR(100),
+    @Abstract NVARCHAR(1000),
+    @PublishUnit NVARCHAR(500),
+    @Signer NVARCHAR(500),
+    @SignDate DATETIME,
+    @NumberPaper INT,
+    @NumberCopies INT,
+    @SecretId INT,
+    @UrgentId INT,
+    @ReceivedTypeId INT,
+    @Sents NVARCHAR(1000),
+    @Recipients NVARCHAR(4000),
+    @ListRecipients XML,
+    @DocBookId INT,
+    @DocTypeId INT,
+    @DocFieldId INT,
+    @UnitSend NVARCHAR(500),
+    @ExpiredDate DATETIME,
+    @CreatedUserId INT,
+    @CreatedUserRoleId INT,
+    @IsReceivedPaper BIT,
+    @ReplyDocId BIGINT,
+    @ReplyNotation NVARCHAR(100),
+    @ApproveStatus BIT,
+    @PublishDate DATETIME,
+    @SignerRole NVARCHAR(500),
+    @LeaderRecipientCode NVARCHAR(500),
+    @LeaderRecipient NVARCHAR(500),
+    @PresideRecipientCode NVARCHAR(500),
+    @PresideRecipient NVARCHAR(500),
+    @CoordinatedRecipientCode NVARCHAR(500),
+    @CoordinatedRecipient NVARCHAR(500),
+    @Note NVARCHAR(1000),
+    @NotationText VARCHAR(50),
+    @NeedFollow BIT,
+    @HasPaperCopy BIT,
+    @HasNoFile BIT,
+    @LanguageId INT,
+    @PageCount VARCHAR(50),
+    @PositionName NVARCHAR(100),
+    @ReceivedPaperDate DATETIME,
+    @LeaderRecipientSuggestIds NVARCHAR(500),
+    @LeaderRecipientSuggest NVARCHAR(500),
+    @AttachmentIncomingDocs XML
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        DECLARE @current_date DATETIME = GETDATE(),
+                @incoming_doc_id BIGINT;
+
+        -- Format lại chuỗi
+        SET @Abstract = CONCAT(UPPER(LEFT(@Abstract, 1)), SUBSTRING(@Abstract, 2, LEN(@Abstract)));
+        SET @PublishUnit = CONCAT(UPPER(LEFT(@PublishUnit, 1)), SUBSTRING(@PublishUnit, 2, LEN(@PublishUnit)));
+
+        -- Parse Attachments XML
+        IF OBJECT_ID('tempdb..#AttachmentIncomingDocs') IS NOT NULL
+            DROP TABLE #AttachmentIncomingDocs;
+        CREATE TABLE #AttachmentIncomingDocs
+        (
+            Id BIGINT,
+            FileName NVARCHAR(500),
+            FileDescription NVARCHAR(500),
+            FilePath VARCHAR(500),
+            Extension VARCHAR(5)
+        );
+
+        INSERT INTO #AttachmentIncomingDocs (Id, FileName, FileDescription, FilePath, Extension)
+        SELECT x.v.value('Id[1]', 'bigint'),
+               x.v.value('FileName[1]', 'nvarchar(500)'),
+               x.v.value('FileDescription[1]', 'nvarchar(500)'),
+               x.v.value('FilePath[1]', 'varchar(500)'),
+               x.v.value('Extension[1]', 'varchar(5)')
+        FROM @AttachmentIncomingDocs.nodes('AttachmentIncomingDocs/AttachmentIncomingDoc') x(v);
+
+        -- Parse Recipients XML
+        IF OBJECT_ID('tempdb..#ListRecipients') IS NOT NULL
+            DROP TABLE #ListRecipients;
+        CREATE TABLE #ListRecipients (Id INT, Name NVARCHAR(255));
+
+        INSERT INTO #ListRecipients (Id, Name)
+        SELECT x.v.value('Id[1]', 'int'),
+               x.v.value('Name[1]', 'nvarchar(255)')
+        FROM @ListRecipients.nodes('ListRecipients/Recipient') x(v);
+
+        IF @ReplyDocId = 0
+            SET @ReplyDocId = NULL;
+
+        -- ===============================
+        -- Update
+        -- ===============================
+        IF @Id > 0
+        BEGIN
+            UPDATE edoc.IncomingDoc
+            SET ReceivedDate = @ReceivedDate,
+                Number = @Number,
+                Notation = UPPER(@Notation),
+                NotationText = @NotationText,
+                Abstract = @Abstract,
+                PublishUnit = @PublishUnit,
+                Signer = @Signer,
+                SignDate = @SignDate,
+                NumberPaper = @NumberPaper,
+                NumberCopies = @NumberCopies,
+                SecretId = @SecretId,
+                UrgentId = @UrgentId,
+                ReceivedTypeId = @ReceivedTypeId,
+                Sents = @Sents,
+                Recipients = @Recipients,
+                DocBookId = @DocBookId,
+                DocTypeId = @DocTypeId,
+                DocFieldId = @DocFieldId,
+                UnitSend = @PublishUnit,
+                ExpiredDate = @ExpiredDate,
+                ModifiedUserId = @CreatedUserId,
+                ModifiedDate = @current_date,
+                IsReceivedPaper = @IsReceivedPaper,
+                ReplyDocId = @ReplyDocId,
+                ReplyNotation = @ReplyNotation,
+                PublishDate = @PublishDate,
+                SignerRole = @SignerRole,
+                LeaderRecipientCode = @LeaderRecipientCode,
+                LeaderRecipient = @LeaderRecipient,
+                PresideRecipientCode = @PresideRecipientCode,
+                PresideRecipient = @PresideRecipient,
+                CoordinatedRecipientCode = @CoordinatedRecipientCode,
+                CoordinatedRecipient = @CoordinatedRecipient,
+                Note = @Note,
+                NeedFollow = @NeedFollow,
+                HasPaperCopy = @HasPaperCopy,
+                HasNoFile = @HasNoFile,
+                LanguageId = @LanguageId,
+                PageCount = @PageCount,
+                PositionName = @PositionName,
+                ReceivedPaperDate = @ReceivedPaperDate,
+                LeaderRecipientSuggestIds = @LeaderRecipientSuggestIds,
+                LeaderRecipientSuggest = @LeaderRecipientSuggest
+            WHERE Id = @Id;
+
+            SET @incoming_doc_id = @Id;
+
+            -- Nếu có DocBookId thì cập nhật trạng thái và thêm vào lịch sử
+            DECLARE @CheckDocBookId INT;
+            SELECT @CheckDocBookId = DocBookId FROM edoc.IncomingDoc WHERE Id = @Id;
+
+            IF(@DocBookId > 0 AND @CheckDocBookId > 0)
+            BEGIN 
+                UPDATE edoc.IncomingDoc 
+                SET DocBookId = @DocBookId,
+                    Status = 1,
+                    ModifiedUserId = @CreatedUserId,
+                    ModifiedDate = @current_date
+                WHERE Id = @Id;
+
+                INSERT INTO edoc.OpinionIncomingDoc (
+                    IncomingDocId,
+                    OpinionUserId,
+                    Opinion,
+                    Status,
+                    OpinionDate,
+                    OpinionType,
+                    OpinionUserRoleId
+                )
+                VALUES (
+                    @Id,
+                    @CreatedUserId,
+                    N'Vào Sổ',
+                    1,
+                    @current_date,
+                    2,
+                    @CreatedUserRoleId
+                );
+            END
+        END
+        -- ===============================
+        -- Insert mới
+        -- ===============================
+        ELSE
+        BEGIN
+            DECLARE @NewIds TABLE(Id BIGINT);
+
+            INSERT INTO edoc.IncomingDoc
+            (
+                UnitId, ReceivedDate, Number, Notation, NotationText, Abstract, PublishUnit, Signer, SignDate,
+                NumberPaper, NumberCopies, SecretId, UrgentId, ReceivedTypeId, Approved, Sents, Recipients,
+                DocBookId, DocTypeId, DocFieldId, IsHandling, IsInterDoc, IsUnitSend, UnitSend, ExpiredDate,
+                CreatedUserId, CreatedUserRoleId, CreatedDate, IsReceivedPaper, ReceivedPaperDate,
+                ReplyDocId, ReplyNotation, PublishDate, SignerRole, LeaderRecipientCode, LeaderRecipient,
+                PresideRecipientCode, PresideRecipient, CoordinatedRecipientCode, CoordinatedRecipient,
+                Note, NeedFollow, HasPaperCopy, HasNoFile, LanguageId, PageCount, PositionName,
+                LeaderRecipientSuggest, LeaderRecipientSuggestIds, Status
+            )
+            OUTPUT INSERTED.Id INTO @NewIds
+            VALUES
+            (
+                @UnitId, @ReceivedDate, @Number, UPPER(@Notation), @NotationText, @Abstract, @PublishUnit, @Signer,
+                @SignDate, @NumberPaper, @NumberCopies, @SecretId, @UrgentId, @ReceivedTypeId, 0, @Sents, @Recipients,
+                @DocBookId, @DocTypeId, @DocFieldId, 0, 0, 0, @PublishUnit, @ExpiredDate, @CreatedUserId,
+                @CreatedUserRoleId, @current_date, @IsReceivedPaper, @ReceivedPaperDate, @ReplyDocId, @ReplyNotation,
+                @PublishDate, @SignerRole, @LeaderRecipientCode, @LeaderRecipient, @PresideRecipientCode,
+                @PresideRecipient, @CoordinatedRecipientCode, @CoordinatedRecipient, @Note, @NeedFollow, @HasPaperCopy,
+                @HasNoFile, @LanguageId, @PageCount, @PositionName, @LeaderRecipientSuggest, @LeaderRecipientSuggestIds, 0
+            );
+
+            SET @incoming_doc_id = (SELECT TOP 1 Id FROM @NewIds);
+        END
+
+        -- Approve document nếu cần
+        IF @ApproveStatus = 1
+            EXEC [edoc].[Prc_IncomingDocApprove] @IncomingDocId = @incoming_doc_id, @UserId = @CreatedUserId;
+
+        -- ✅ Luôn trả về ID bản ghi
+        SELECT CAST(@incoming_doc_id AS BIGINT);
+        RETURN;
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        SELECT @ErrorMessage = 
+            N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState,
+                  @ErrorNumber, @ErrorSeverity, @ErrorState, @ErrorProcedure, @ErrorLine);
+    END CATCH;
+END;
