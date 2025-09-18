@@ -66,9 +66,7 @@ BEGIN
     BEGIN TRY
         DECLARE @current_date DATETIME = GETDATE(),
                 @incoming_doc_id BIGINT,
-                @message_error NVARCHAR(500),
-				@Status INT,
-				@RoleCode NVARCHAR(500);
+                @message_error NVARCHAR(500);
 
         -- Format lại chuỗi
         SET @Abstract = CONCAT(UPPER(LEFT(@Abstract, 1)), SUBSTRING(@Abstract, 2, LEN(@Abstract)));
@@ -222,18 +220,6 @@ BEGIN
                 RETURN;
             END;
 
-			-- BinhTD 18/09/2025 Update case VanThuBo create new
-			SET @Status = IIF(@Number > 0, 1, 0);
-			
-			SELECT TOP 1 @RoleCode = Code
-            FROM dbo.Role
-            WHERE Id = @CreatedUserRoleId;
-
-			IF @RoleCode = 'VanThuBo'
-			BEGIN
-				SET @Status = 2
-			END
-
             INSERT INTO edoc.IncomingDoc
             (
                 UnitId,
@@ -295,8 +281,8 @@ BEGIN
              @PublishDate, @SignerRole, @LeaderRecipientCode, @LeaderRecipient, @PresideRecipientCode,
              @PresideRecipient, @CoordinatedRecipientCode, @CoordinatedRecipient, @Note, @NeedFollow, @HasPaperCopy,
              @HasNoFile, @LanguageId, @PageCount, @PositionName, @LeaderRecipientSuggest, @LeaderRecipientSuggestIds,
-             @Status);
-			
+             IIF(@Number > 0, 1, 0));
+
             SET @incoming_doc_id = SCOPE_IDENTITY();
 
             -- Insert attach incoming doc add new
@@ -317,12 +303,8 @@ BEGIN
                 EXEC [edoc].[Prc_IncomingDocTranUnit_Auto] @Id = @incoming_doc_id,       -- bigint
                                                            @RoleId = @CreatedUserRoleId, -- int
                                                            @UserId = @CreatedUserId;     -- int
+
             END;
-			
-			IF @Status = 2
-			BEGIN
-				
-			END
         END;
 
         -- Approve document nếu cần
