@@ -214,6 +214,7 @@ BEGIN
                id.PageCount,
                id.PositionName,
                id.Status,
+               id.IsRead,
                returnstatus,
                LeaderRecipientSuggest,
                LeaderRecipientSuggestIds

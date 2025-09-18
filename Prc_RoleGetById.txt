@@ -29,6 +29,8 @@ BEGIN
 		*******************************************************************************/
 
 		SELECT [Id]
+			  ,[UnitId]
+			  ,[Code]
 			  ,[Name]
 			  ,[Description]
 			  ,[IsLocked]
@@ -79,19 +81,3 @@ BEGIN
 
     SET NOCOUNT OFF
 END
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

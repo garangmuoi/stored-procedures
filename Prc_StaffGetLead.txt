@@ -1,0 +1,133 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [dbo].[Prc_StaffGetLead]    Script Date: 9/18/2025 5:05:09 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [dbo].[Prc_StaffGetLead]
+    @SearchText NVARCHAR(255) = NULL,
+    @PageNumber INT = 1,
+    @PageSize INT = 10,
+    @UnitId INT = NULL,
+    @DepartmentId INT = NULL,
+    @RoleCode NVARCHAR(200) = NULL,   -- có thể truyền 1 hoặc nhiều code, phân cách bằng dấu phẩy
+    @IsLocked BIT = NULL,
+    @SortBy NVARCHAR(50) = 'FirstName',
+    @SortDirection NVARCHAR(10) = 'ASC',
+    @TotalRecords INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Tách RoleCode nếu có nhiều (CSV)
+    ;WITH RoleFilter AS (
+        SELECT LTRIM(RTRIM(Value)) AS RoleCode
+        FROM dbo.SplitString(@RoleCode, ',')
+    ),
+    StaffWithRole AS (
+        SELECT 
+            s.Id,
+            s.DepartmentId,
+            s.PositionId,
+            s.UnitId,
+            s.Code,
+            s.FirstName,
+            s.LastName,
+            s.Gender,
+            s.UserName,
+            s.Email,
+            s.Phone,
+            s.Mobile,
+            s.BirthOfDay,
+            s.Address,
+            s.DossierReturnAddress,
+            s.Image,
+            s.IDCard,
+            s.IDCardDate,
+            s.IDCardPlace,
+            s.DepartmentNameReceive,
+            s.PhoneOfDepartmentReceive,
+            s.IsAdministrator,
+            s.PlaceOfReception,
+            s.LastLoginDate,
+            s.IsLocked,
+            s.IsDeleted,
+            s.ModifiedUserId,
+            s.ModifiedDate,
+            s.CreatedUserId,
+            s.CreatedDate,
+            s.Token,
+            s.UnitResolveInformation,
+            s.IsShowAllDocument,
+            s.IsRepresentUnit,
+            s.IsRepresentDepartment,
+            s.CommuneId,
+            s.SignImage,
+            s.SignPhone,
+            s.SignCA,
+            s.TKThuHuong,
+            s.MaNHThuHuong,
+            s.TenTKThuHuong,
+            r.Code AS RoleCode,
+            r.Id AS RoleId,
+            r.Name AS RoleName,
+            p.Name AS PositionName,
+            p.Code AS PositionCode,
+            u.Name AS UnitName,
+            u.Code AS UnitCode,
+            dp.Name AS DepartmentName,
+            dp.Code AS DepartmentCode,
+            ROW_NUMBER() OVER (
+                PARTITION BY s.Id
+                ORDER BY s.Id
+            ) AS DupRank -- để loại trùng staff
+        FROM Staff s
+        LEFT JOIN RoleOfStaff ros ON s.Id = ros.StaffId
+        LEFT JOIN Role r ON ros.RoleId = r.Id
+        LEFT JOIN Position p ON s.PositionId = p.Id
+        LEFT JOIN Department u ON s.UnitId = u.Id
+        LEFT JOIN Department dp ON s.DepartmentId = dp.Id
+        WHERE s.IsDeleted = 0
+          AND (@RoleCode IS NULL OR r.Code IN (SELECT RoleCode FROM RoleFilter))
+          AND (@SearchText IS NULL OR 
+               s.FirstName LIKE '%' + @SearchText + '%' OR 
+               s.LastName LIKE '%' + @SearchText + '%' OR 
+               s.UserName LIKE '%' + @SearchText + '%' OR
+               (s.FirstName + ' ' + s.LastName) LIKE '%' + @SearchText + '%')
+          AND (@UnitId IS NULL OR s.UnitId = @UnitId)
+          AND (@DepartmentId IS NULL OR s.DepartmentId = @DepartmentId)
+          AND (@IsLocked IS NULL OR s.IsLocked = @IsLocked)
+    ),
+    FilteredStaff AS (
+        SELECT *,
+            ROW_NUMBER() OVER (
+                ORDER BY 
+                    CASE WHEN @SortBy = 'FirstName'   AND @SortDirection = 'ASC'  THEN FirstName END ASC,
+                    CASE WHEN @SortBy = 'FirstName'   AND @SortDirection = 'DESC' THEN FirstName END DESC,
+                    CASE WHEN @SortBy = 'LastName'    AND @SortDirection = 'ASC'  THEN LastName END ASC,
+                    CASE WHEN @SortBy = 'LastName'    AND @SortDirection = 'DESC' THEN LastName END DESC,
+                    CASE WHEN @SortBy = 'CreatedDate' AND @SortDirection = 'ASC'  THEN CreatedDate END ASC,
+                    CASE WHEN @SortBy = 'CreatedDate' AND @SortDirection = 'DESC' THEN CreatedDate END DESC,
+                    CASE WHEN @SortBy = 'UserName'    AND @SortDirection = 'ASC'  THEN UserName END ASC,
+                    CASE WHEN @SortBy = 'UserName'    AND @SortDirection = 'DESC' THEN UserName END DESC,
+                    FirstName ASC -- default sort
+            ) AS RowNumber
+        FROM StaffWithRole
+        WHERE DupRank = 1 -- loại trùng Staff.Id, chỉ lấy bản ghi đầu tiên
+    ),
+    TotalCount AS (
+        SELECT COUNT(*) AS TotalRecords FROM FilteredStaff
+    )
+    SELECT 
+        fs.*,
+        tc.TotalRecords
+    FROM FilteredStaff fs
+    CROSS JOIN TotalCount tc
+    WHERE fs.RowNumber BETWEEN ((@PageNumber - 1) * @PageSize + 1) 
+                             AND (@PageNumber * @PageSize)
+    ORDER BY fs.RowNumber;
+
+    -- Output tổng số record
+    SELECT @TotalRecords = (SELECT TotalRecords FROM TotalCount);
+END
