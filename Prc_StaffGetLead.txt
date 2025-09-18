@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [dbo].[Prc_StaffGetLead]    Script Date: 9/18/2025 5:05:09 PM ******/
+/****** Object:  StoredProcedure [dbo].[Prc_StaffGetLead]    Script Date: 9/18/2025 5:54:50 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -30,7 +30,7 @@ BEGIN
             s.Id,
             s.DepartmentId,
             s.PositionId,
-            s.UnitId,
+            r.UnitId,
             s.Code,
             s.FirstName,
             s.LastName,
@@ -76,8 +76,8 @@ BEGIN
             p.Code AS PositionCode,
             u.Name AS UnitName,
             u.Code AS UnitCode,
-            dp.Name AS DepartmentName,
-            dp.Code AS DepartmentCode,
+            d.Name AS DepartmentName,
+            d.Code AS DepartmentCode,
             ROW_NUMBER() OVER (
                 PARTITION BY s.Id
                 ORDER BY s.Id
@@ -86,8 +86,8 @@ BEGIN
         LEFT JOIN RoleOfStaff ros ON s.Id = ros.StaffId
         LEFT JOIN Role r ON ros.RoleId = r.Id
         LEFT JOIN Position p ON s.PositionId = p.Id
-        LEFT JOIN Department u ON s.UnitId = u.Id
-        LEFT JOIN Department dp ON s.DepartmentId = dp.Id
+        LEFT JOIN Department u ON r.UnitId = u.Id
+        LEFT JOIN Department d ON s.DepartmentId = d.Id
         WHERE s.IsDeleted = 0
           AND (@RoleCode IS NULL OR r.Code IN (SELECT RoleCode FROM RoleFilter))
           AND (@SearchText IS NULL OR 
@@ -95,7 +95,7 @@ BEGIN
                s.LastName LIKE '%' + @SearchText + '%' OR 
                s.UserName LIKE '%' + @SearchText + '%' OR
                (s.FirstName + ' ' + s.LastName) LIKE '%' + @SearchText + '%')
-          AND (@UnitId IS NULL OR s.UnitId = @UnitId)
+          AND (@UnitId IS NULL OR r.UnitId = @UnitId)
           AND (@DepartmentId IS NULL OR s.DepartmentId = @DepartmentId)
           AND (@IsLocked IS NULL OR s.IsLocked = @IsLocked)
     ),
