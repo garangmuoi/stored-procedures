@@ -1,0 +1,97 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [dbo].[Prc_RoleGetById]    Script Date: 9/18/2025 2:32:59 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+-- =============================================
+-- Author:		NghiaND
+-- Create date:	2016/06/06
+-- Description:	<Description,,>
+-- =============================================
+ALTER PROCEDURE [dbo].[Prc_RoleGetById]
+    -- Add the parameters for the stored procedure here
+    @Id int
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+		/*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+
+		SELECT [Id]
+			  ,[Name]
+			  ,[Description]
+			  ,[IsLocked]
+			  ,[ModifiedUserId]
+			  ,[ModifiedDate]
+			  ,[CreatedUserId]
+			  ,[CreatedDate]
+			  ,[UnitId]
+		  FROM [dbo].[Role]
+		WHERE [Id] = @Id;
+
+		/*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+	   DECLARE @ErrorMessage nvarchar(max),
+			 @ErrorNumber int,
+			 @ErrorSeverity int,
+			 @ErrorState int,
+			 @ErrorLine int,
+			 @ErrorProcedure nvarchar(200);
+
+	   -- Assign variables to error-handling functions that capture information for RAISERROR.
+	   SELECT @ErrorNumber = ERROR_NUMBER(),
+			 @ErrorSeverity = ERROR_SEVERITY(),
+			 @ErrorState = ERROR_STATE(),
+			 @ErrorLine = ERROR_LINE(),
+			 @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+	   
+	   -- Build the message string that will contain original error information.
+	   SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, ' + 'Message: '+ ERROR_MESSAGE();
+	   
+	   -- Only set the error state if its been set to zero
+	   IF (@ErrorState = 0) SET @ErrorState = 1
+	   
+	   -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+	   RAISERROR (@ErrorMessage,
+				@ErrorSeverity,
+				@ErrorState,
+				@ErrorNumber,    -- parameter: original error number.
+				@ErrorSeverity,  -- parameter: original error severity.
+				@ErrorState,     -- parameter: original error state.
+				@ErrorProcedure, -- parameter: original error procedure name.
+				@ErrorLine       -- parameter: original error line number.
+		  );
+    END CATCH
+
+    SET NOCOUNT OFF
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
