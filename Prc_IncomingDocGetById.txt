@@ -1,0 +1,264 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetById]    Script Date: 9/18/2025 2:10:35 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		Hung Tran
+-- Create date:	18-04-2018
+-- Description:	<Description,,>
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDocGetById]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId BIGINT
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering SELECT statements.
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        /*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+
+        --IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
+        --    DROP TABLE #Recipients;
+        --CREATE TABLE #Recipients (UserReceiveName NVARCHAR(255));
+        --INSERT INTO #Recipients (UserReceiveName)
+        --SELECT DISTINCT
+        --       uidt.UserReceiveName
+        --FROM
+        --(
+        --    SELECT CONCAT(s.FirstName, ' ', s.LastName) UserReceiveName
+        --    FROM edoc.UserIncomingDoc (NOLOCK) uid
+        --        INNER JOIN dbo.Staff (NOLOCK) s
+        --            ON s.Id = uid.UserReceive
+        --    WHERE uid.SendType = 1
+        --          AND uid.UserSend IS NOT NULL
+        --          AND uid.IncomingDocId = @IncomingDocId
+        --    UNION ALL
+        --    SELECT d.Name UserReceiveName
+        --    FROM edoc.UserIncomingDoc (NOLOCK) uid
+        --        INNER JOIN dbo.Department (NOLOCK) d
+        --            ON d.Id = uid.UserReceive
+        --    WHERE uid.SendType = 2
+        --          AND uid.UserSend IS NOT NULL
+        --          AND uid.IncomingDocId = @IncomingDocId
+        --    UNION ALL
+        --    SELECT o.OrganName UserReceiveName
+        --    FROM edoc.InterOutgoingDoc (NOLOCK) iod
+        --        INNER JOIN edoc.UserInterOutgoingDoc (NOLOCK) uiod
+        --            ON uiod.InterOutgoingDocId = iod.intID
+        --        INNER JOIN dbo.Staff (NOLOCK) s
+        --            ON s.Id = uiod.UserSend
+        --        INNER JOIN edoc.InterOrganization (NOLOCK) o
+        --            ON o.OrganID = uiod.OrganId
+        --    WHERE iod.Fromtype = 1
+        --          AND iod.intDocId = @IncomingDocId
+        --) uidt;
+
+        --
+        SELECT ISNULL((SELECT TOP 1 1 FROM edoc.LeaderNote (NOLOCK) ln WHERE ln.TypeId = 1 AND ln.DocId = id.Id), 0) HasComment,
+               ISNULL(
+               (
+                   SELECT TOP 1
+                          1
+                   FROM edoc.AttachmentIncomingDoc (NOLOCK) aid
+                   WHERE aid.IncomingDocId = id.Id
+                         AND aid.Status <> 0
+               ),
+               0
+                     ) HasAttachment,
+               ISNULL(
+               (
+                   SELECT TOP 1
+                          a.Id
+                   FROM
+                   (
+                       SELECT uid.Id
+                       FROM edoc.UserIncomingDoc (NOLOCK) uid
+                       WHERE uid.UserSend IS NOT NULL
+                             AND uid.IncomingDocId = id.Id
+                       UNION ALL
+                       SELECT iod.intID Id
+                       FROM edoc.InterOutgoingDoc (NOLOCK) iod
+                       WHERE iod.intDocId = id.Id
+                   ) a
+               ),
+               0
+                     ) HasSentDocument,
+               (
+                   SELECT MAX(uid.ReadDate)
+                   FROM edoc.UserIncomingDoc (NOLOCK) uid
+                   WHERE uid.UserSend IS NOT NULL
+                         AND uid.Status <> -1
+                         AND uid.IncomingDocId = id.Id
+                         AND uid.ReadDate IS NOT NULL
+               ) LastReadDocument,
+               ISNULL(
+               (
+                   SELECT TOP 1
+                          1
+                   FROM edoc.HandlingDocLink (NOLOCK) hldl
+                       INNER JOIN edoc.HandlingDoc (NOLOCK) hd
+                           ON hd.Id = hldl.HandlingDocId
+                   WHERE hd.Status <> -1
+                         AND hldl.IsRoot = 1
+                         AND hldl.DocId = id.Id
+                         AND hldl.TypeId = 1
+               ),
+               0
+                     ) HasHandling,
+               id.Id,
+               id.UnitId,
+               id.ReceivedDate,
+               id.DocumentCode,
+               id.ArchiveStatus,
+               id.Number,
+               id.Notation,
+               id.NotationText,
+               id.Abstract,
+               id.PublishUnit,
+               id.PublishDate,
+               id.Signer,
+               id.SignDate,
+               id.NumberPaper,
+               id.NumberCopies,
+               id.SecretId,
+               (
+                   SELECT TOP 1
+                          c.DisplayName
+                   FROM dbo.Configuration (NOLOCK) c
+                   WHERE c.Code = 'Secret'
+                         AND CAST(c.Value AS VARCHAR(MAX)) = CAST(id.SecretId AS VARCHAR(MAX))
+               ) SecretName,
+               id.UrgentId,
+               (
+                   SELECT TOP 1
+                          c.DisplayName
+                   FROM dbo.Configuration (NOLOCK) c
+                   WHERE c.Code = 'Urgency'
+                         AND CAST(c.Value AS VARCHAR(MAX)) = CAST(id.UrgentId AS VARCHAR(MAX))
+               ) UrgentName,
+               id.ReceivedTypeId,
+               (
+                   SELECT TOP 1
+                          c.DisplayName
+                   FROM dbo.Configuration (NOLOCK) c
+                   WHERE c.Code = 'ReceivedTypeId'
+                         AND CAST(c.Value AS VARCHAR(MAX)) = CAST(id.ReceivedTypeId AS VARCHAR(MAX))
+               ) ReceivedType,
+               ISNULL(id.Approved, 0) Approved,
+               id.Sents,
+               id.Recipients,
+               --,IIF(@Recipients IS NULL OR @Recipients = '', Recipients, @Recipients) Recipients
+               --ISNULL(
+               --          (RTRIM(LTRIM(STUFF(
+               --                       (SELECT CONCAT('; ', UserReceiveName)FROM #Recipients ORDER BY UserReceiveName FOR XML PATH('')),
+               --                       1,
+               --                       1,
+               --                       ''
+               --                            )
+               --                      )
+               --                )
+               --          ),
+               --          id.Recipients
+               --      ) Recipients,
+               id.DocBookId,
+               (SELECT TOP 1 db.Name FROM edoc.DocBook (NOLOCK) db WHERE db.Id = id.DocBookId) DocBookName,
+               id.DocTypeId,
+               (SELECT TOP 1 dt.TypeId FROM edoc.DocType (NOLOCK) dt WHERE dt.Id = id.DocTypeId) TypeId,
+               (SELECT TOP 1 dt.Name FROM edoc.DocType (NOLOCK) dt WHERE dt.Id = id.DocTypeId) DocTypeCode,
+               (SELECT TOP 1 dt.Description FROM edoc.DocType (NOLOCK) dt WHERE dt.Id = id.DocTypeId) DocTypeName,
+               id.DocFieldId,
+               (SELECT TOP 1 df.Code FROM edoc.DocField (NOLOCK) df WHERE df.Id = id.DocFieldId) DocFieldCode,
+               (SELECT TOP 1 df.Name FROM edoc.DocField (NOLOCK) df WHERE df.Id = id.DocFieldId) DocFieldName,
+               id.IsHandling,
+               id.IsInterDoc,
+               id.IsUnitSend,
+               id.UnitSend,
+               id.ExpiredDate,
+               id.ID_VBLIENTHONG,
+               id.ModifiedUserId,
+               ISNULL(id.ModifiedDate, id.CreatedDate) ModifiedDate,
+               id.CreatedUserId,
+               (
+                   SELECT TOP 1
+                          CONCAT(s.FirstName, ' ', s.LastName)
+                   FROM dbo.Staff (NOLOCK) s
+                   WHERE s.Id = id.CreatedUserId
+               ) CreatedUserName,
+               id.CreatedDate,
+               id.IsReceivedPaper,
+               id.ReceivedPaperDate,
+               id.MoveAnnouncement,
+               ReplyDocId,
+               ReplyNotation,
+               id.LeaderRecipientCode,
+               id.LeaderRecipient,
+               id.PresideRecipientCode,
+               id.PresideRecipient,
+               id.CoordinatedRecipientCode,
+               id.CoordinatedRecipient,
+               id.Note,
+               id.NeedFollow,
+               id.HasPaperCopy,
+               id.HasNoFile,
+               id.LanguageId,
+               id.PageCount,
+               id.PositionName,
+               id.Status,
+               returnstatus,
+               LeaderRecipientSuggest,
+               LeaderRecipientSuggestIds
+        FROM edoc.IncomingDoc (NOLOCK) id
+        WHERE id.Id = @IncomingDocId;
+
+    /*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage
+            = CONCAT(N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ', ERROR_MESSAGE());
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+
+    SET NOCOUNT OFF;
+END;
+

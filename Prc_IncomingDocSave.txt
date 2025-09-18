@@ -1,3 +1,10 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocSave]    Script Date: 9/18/2025 1:26:08 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 -- =============================================
 -- Author:      Hung Tran
 -- Create date: 07-05-2018
@@ -58,7 +65,10 @@ BEGIN
 
     BEGIN TRY
         DECLARE @current_date DATETIME = GETDATE(),
-                @incoming_doc_id BIGINT;
+                @incoming_doc_id BIGINT,
+                @message_error NVARCHAR(500),
+				@Status INT,
+				@RoleCode NVARCHAR(500);
 
         -- Format lại chuỗi
         SET @Abstract = CONCAT(UPPER(LEFT(@Abstract, 1)), SUBSTRING(@Abstract, 2, LEN(@Abstract)));
@@ -84,6 +94,7 @@ BEGIN
                x.v.value('Extension[1]', 'varchar(5)')
         FROM @AttachmentIncomingDocs.nodes('AttachmentIncomingDocs/AttachmentIncomingDoc') x(v);
 
+		--IF EXISTS ( SELECT 1 FROM #AttachmentIncomingDocs) SET @HasNoFile = 1 ELSE SET @HasNoFile =0
         -- Parse Recipients XML
         IF OBJECT_ID('tempdb..#ListRecipients') IS NOT NULL
             DROP TABLE #ListRecipients;
@@ -145,66 +156,136 @@ BEGIN
                 PositionName = @PositionName,
                 ReceivedPaperDate = @ReceivedPaperDate,
                 LeaderRecipientSuggestIds = @LeaderRecipientSuggestIds,
-                LeaderRecipientSuggest = @LeaderRecipientSuggest
+                LeaderRecipientSuggest = @LeaderRecipientSuggest,
+                Status = IIF(Status <> 0, Status, IIF(@Number > 0, 1, 0))
             WHERE Id = @Id;
+
+
+            -- Delete attachment incoming doc not use
+            UPDATE edoc.AttachmentIncomingDoc
+            SET Status = 0
+            WHERE IncomingDocId = @Id
+                  AND Id NOT IN ( SELECT dci.Id FROM #AttachmentIncomingDocs dci );
+
+
+            -- Insert attach incoming doc add new
+            INSERT INTO edoc.AttachmentIncomingDoc (FileName, FileDescription, IncomingDocId, Status, FilePath, Extension, CreatedUserId, CreatedDate)
+            SELECT aid.FileName,
+                   aid.FileDescription,
+                   @Id,
+                   1,
+                   aid.FilePath,
+                   aid.Extension,
+                   @CreatedUserId,
+                   @current_date
+            FROM #AttachmentIncomingDocs aid
+            WHERE aid.Id NOT IN ( SELECT dc.Id FROM edoc.AttachmentIncomingDoc dc WHERE dc.IncomingDocId = @Id );
+
+
             DECLARE @CheckDocBookId INT;
 
--- Gán giá trị DocBookId từ bảng tạm vào biến
-SELECT @CheckDocBookId = DocBookId
-FROM edoc.IncomingDoc
-WHERE Id = @Id;
+            -- Gán giá trị DocBookId từ bảng tạm vào biến
+            SELECT @CheckDocBookId = DocBookId
+            FROM edoc.IncomingDoc
+            WHERE Id = @Id;
 
-            --- Nếu có dockbookid thì cập nhật trạng thái và thêm vào lịch sử
-            IF(@DocBookId > 0 and @CheckDocBookId > 0)
-        BEGIN 
-        DECLARE @OpinionUserRoleId INT = 0; -- Default to 0 if no role is found
+            --- Nếu có DocBookId thì cập nhật trạng thái và thêm vào lịch sử
+            IF (@DocBookId > 0 AND @CheckDocBookId <= 0)
+            BEGIN
+                -- Update IncomingDoc
+                UPDATE edoc.IncomingDoc
+                SET DocBookId = @DocBookId,
+                    Status = 1,
+                    ModifiedUserId = @CreatedUserId,
+                    ModifiedDate = @current_date
+                WHERE Id = @Id;
 
-        -- Update IncomingDoc
-        UPDATE edoc.IncomingDoc 
-        SET DocBookId = @DocBookId,
-            Status = 1,
-            ModifiedUserId = @CreatedUserId,
-            ModifiedDate = @current_date
-        WHERE Id = @Id;
-
-        INSERT INTO edoc.OpinionIncomingDoc (
-            IncomingDocId,
-            OpinionUserId,
-            Opinion,
-            Status,
-            OpinionDate,
-            OpinionType,
-            OpinionUserRoleId
-        )
-        VALUES (
-            @Id,
-            @CreatedUserId,
-            N'Vào Sổ',
-            1, -- Status 1: active opinion
-            @current_date,
-            2,
-            @CreatedUserRoleId
-        );
-    END
-    --- end Nếu có dockbookid thì cập nhật trạng thái và thêm vào lịch sử
+                INSERT INTO edoc.OpinionIncomingDoc (IncomingDocId, OpinionUserId, Opinion, Status, OpinionDate, OpinionType, OpinionUserRoleId)
+                VALUES
+                (   @Id, @CreatedUserId, N'Vào Sổ', 1, -- Status 1: active opinion
+                    @current_date, 2, @CreatedUserRoleId);
+            END;
+            --- end Nếu có DocBookId thì cập nhật trạng thái và thêm vào lịch sử
             -- gán lại ID khi update
             SET @incoming_doc_id = @Id;
-        END
+        END;
         -- ===============================
         -- Insert mới
         -- ===============================
         ELSE
         BEGIN
+            SET @Notation = TRIM(@Notation);
+            IF EXISTS (SELECT 1 FROM edoc.IncomingDoc WHERE UPPER(Notation) = UPPER(@Notation))
+            BEGIN
+                SET @message_error = N'Số ký hiệu đã tồn tại';
+                SELECT @message_error AS MessageError;
+                RETURN;
+            END;
+
+			-- BinhTD 18/09/2025 Update case VanThuBo create new
+			SET @Status = IIF(@Number > 0, 1, 0);
+			
+			SELECT TOP 1 @RoleCode = Code
+            FROM dbo.Role
+            WHERE Id = @CreatedUserRoleId;
+
+			IF @RoleCode = 'VanThuBo'
+			BEGIN
+				SET @Status = 2
+			END
+
             INSERT INTO edoc.IncomingDoc
             (
-                UnitId, ReceivedDate, Number, Notation, NotationText, Abstract, PublishUnit, Signer, SignDate,
-                NumberPaper, NumberCopies, SecretId, UrgentId, ReceivedTypeId, Approved, Sents, Recipients,
-                DocBookId, DocTypeId, DocFieldId, IsHandling, IsInterDoc, IsUnitSend, UnitSend, ExpiredDate,
-                CreatedUserId, CreatedUserRoleId, CreatedDate, IsReceivedPaper, ReceivedPaperDate,
-                ReplyDocId, ReplyNotation, PublishDate, SignerRole, LeaderRecipientCode, LeaderRecipient,
-                PresideRecipientCode, PresideRecipient, CoordinatedRecipientCode, CoordinatedRecipient,
-                Note, NeedFollow, HasPaperCopy, HasNoFile, LanguageId, PageCount, PositionName,
-                LeaderRecipientSuggest, LeaderRecipientSuggestIds, Status
+                UnitId,
+                ReceivedDate,
+                Number,
+                Notation,
+                NotationText,
+                Abstract,
+                PublishUnit,
+                Signer,
+                SignDate,
+                NumberPaper,
+                NumberCopies,
+                SecretId,
+                UrgentId,
+                ReceivedTypeId,
+                Approved,
+                Sents,
+                Recipients,
+                DocBookId,
+                DocTypeId,
+                DocFieldId,
+                IsHandling,
+                IsInterDoc,
+                IsUnitSend,
+                UnitSend,
+                ExpiredDate,
+                CreatedUserId,
+                CreatedUserRoleId,
+                CreatedDate,
+                IsReceivedPaper,
+                ReceivedPaperDate,
+                ReplyDocId,
+                ReplyNotation,
+                PublishDate,
+                SignerRole,
+                LeaderRecipientCode,
+                LeaderRecipient,
+                PresideRecipientCode,
+                PresideRecipient,
+                CoordinatedRecipientCode,
+                CoordinatedRecipient,
+                Note,
+                NeedFollow,
+                HasPaperCopy,
+                HasNoFile,
+                LanguageId,
+                PageCount,
+                PositionName,
+                LeaderRecipientSuggest,
+                LeaderRecipientSuggestIds,
+                Status
             )
             VALUES
             (@UnitId, @ReceivedDate, @Number, UPPER(@Notation), @NotationText, @Abstract, @PublishUnit, @Signer,
@@ -213,12 +294,44 @@ WHERE Id = @Id;
              @CreatedUserRoleId, @current_date, @IsReceivedPaper, @ReceivedPaperDate, @ReplyDocId, @ReplyNotation,
              @PublishDate, @SignerRole, @LeaderRecipientCode, @LeaderRecipient, @PresideRecipientCode,
              @PresideRecipient, @CoordinatedRecipientCode, @CoordinatedRecipient, @Note, @NeedFollow, @HasPaperCopy,
-             @HasNoFile, @LanguageId, @PageCount, @PositionName, @LeaderRecipientSuggest, @LeaderRecipientSuggestIds, 0);
-        END
+             @HasNoFile, @LanguageId, @PageCount, @PositionName, @LeaderRecipientSuggest, @LeaderRecipientSuggestIds,
+             @Status);
+			
+            SET @incoming_doc_id = SCOPE_IDENTITY();
+
+            -- Insert attach incoming doc add new
+            INSERT INTO edoc.AttachmentIncomingDoc (IncomingDocId, FileName, FileDescription, FilePath, Extension, Status, CreatedUserId, CreatedDate)
+            SELECT @incoming_doc_id,
+                   aid.FileName,
+                   aid.FileDescription,
+                   aid.FilePath,
+                   aid.Extension,
+                   1,
+                   @CreatedUserId,
+                   @current_date
+            FROM #AttachmentIncomingDocs aid;
+
+            IF ISNULL(@LeaderRecipientCode, '') = ''
+               AND (ISNULL(@CoordinatedRecipientCode, '') <> '' OR ISNULL(@CoordinatedRecipientCode, '') <> '')
+            BEGIN
+                EXEC [edoc].[Prc_IncomingDocTranUnit_Auto] @Id = @incoming_doc_id,       -- bigint
+                                                           @RoleId = @CreatedUserRoleId, -- int
+                                                           @UserId = @CreatedUserId;     -- int
+            END;
+			
+			IF @Status = 2
+			BEGIN
+				
+			END
+        END;
 
         -- Approve document nếu cần
-        IF @ApproveStatus = 1
-            EXEC [edoc].[Prc_IncomingDocApprove] @IncomingDocId = @incoming_doc_id, @UserId = @CreatedUserId;
+        --IF @ApproveStatus = 1
+        --    EXEC [edoc].[Prc_IncomingDocApprove] @IncomingDocId = @incoming_doc_id,
+        --                                         @UserId = @CreatedUserId;
+
+        -- Return the Id
+        SELECT @incoming_doc_id AS Id;
 
     END TRY
     BEGIN CATCH
@@ -240,7 +353,15 @@ WHERE Id = @Id;
         IF (@ErrorState = 0)
             SET @ErrorState = 1;
 
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState,
-                  @ErrorNumber, @ErrorSeverity, @ErrorState, @ErrorProcedure, @ErrorLine);
+        RAISERROR(
+                     @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorProcedure,
+                     @ErrorLine
+                 );
     END CATCH;
 END;
