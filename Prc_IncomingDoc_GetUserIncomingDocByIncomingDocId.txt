@@ -1,0 +1,82 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]    Script Date: 9/19/2025 4:48:46 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		Tran Duc Binh
+-- Create date:	13/09/2025
+-- Description:	Get UserIncomingDoc
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        
+    SELECT
+    Id
+    ,IncomingDocId
+    ,UserSend
+    ,UserSendName
+    ,UserSendRoleId
+    ,UserReceive
+    ,UserReceiveName
+    ,UserReceiveRoleId
+    ,ReceiveRoleId
+    ,ReceiveRoleUnitName
+    ,SendDate
+    ,ReadDate
+    ,ExpiredDate
+    ,CompleteDate
+    ,Status
+    ,SendType
+    ,ProsessRoleId
+    ,UserSendStatus
+    ,UserReceiveStatus
+    ,Note
+    ,ProsessNote
+    FROM UserIncomingDoc(NOLOCK)
+    WHERE IncomingDocId = @IncomingDocId;
+
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+END;

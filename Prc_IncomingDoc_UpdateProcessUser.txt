@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcess]    Script Date: 9/15/2025 8:29:22 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessUser]    Script Date: 9/19/2025 5:19:04 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -9,89 +9,136 @@ GO
 -- =============================================
 -- Author:		Tran Duc Binh
 -- Create date:	13/09/2025
--- Description:	Update process an incoming document by updating status, log opinion
+-- Description:	Update process an incoming document by updating status, log opinion, add new user incoming document
 -- =============================================
-ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcess]
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessUser]
     -- Add the parameters for the stored procedure here
     @IncomingDocId BIGINT,
     @UserId INT,
     @RoleId INT,
-    @Status INT = NULL,
-    @Opinion NVARCHAR(MAX),
-    @OpinionType INT,
-    @ReturnStatus BIT = NULL
+	@Status INT,
+	@Opinion NVARCHAR(MAX),
+	@OpinionType INT,
+	@ReturnStatus BIT = NULL,
+	@SendType INT = 1,
+	@ExpiredDate DATETIME = NULL,
+	@CompleteDate DATETIME = NULL,
+    @Recipients XML = NULL
 AS
 BEGIN
     BEGIN TRY
-        BEGIN TRANSACTION;
+    BEGIN TRANSACTION;
         --
         -- All other declarations and initialisation
         --
-        DECLARE @current_date DATETIME = GETDATE();
+        DECLARE @current_date DATETIME = GETDATE(),
+                @UserSendStatus INT = NULL
+        
+        SELECT @UserSendStatus = Status
+        FROM edoc.IncomingDoc
+        WHERE Id = @IncomingDocId;
+
+        -- Declare temp table to parse Recipients
+        IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
+            DROP TABLE #Recipients;
+        CREATE TABLE #Recipients
+        (
+            RecipientId INT,
+            RecipientName NVARCHAR(255),
+            RecipientRoleId INT,
+            RecipientProsessRoleId INT
+        );
+
+        -- Parse the XML into the temp table #Recipients
+        INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId)
+        SELECT 
+            x.v.value('(UserId)[1]', 'INT') AS RecipientId,
+            x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
+            x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
+			x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId
+        FROM @Recipients.nodes('/Recipients/Recipient') x(v);
 
         /*******************************************************************************
 		* Add SQL statement(s) here.
+		* Update status, log opinion, and transfer to recipients
 		*******************************************************************************/
-        IF @ReturnStatus IS NOT NULL
-        BEGIN
-            -- Update the IncomingDoc ReturnStatus
-            UPDATE edoc.IncomingDoc
-            SET ReturnStatus = @ReturnStatus,
-                ModifiedUserId = @UserId,
-                ModifiedDate = @current_date
-            WHERE Id = @IncomingDocId;
-        END;
 
-        IF @Status IS NOT NULL
-        BEGIN
-            -- Update the IncomingDoc status
-            UPDATE edoc.IncomingDoc
-            SET Status = @Status,
-                ModifiedUserId = @UserId,
-                ModifiedDate = @current_date
-            WHERE Id = @IncomingDocId;
-        END;
+        -- Update the IncomingDoc
+        UPDATE edoc.IncomingDoc
+        SET Status = @Status,
+            ReturnStatus = @ReturnStatus,
+            ModifiedUserId = @UserId,
+            ModifiedDate = @current_date
+        WHERE Id = @IncomingDocId;
 
-        -- Insert opinion into OpinionIncomingDoc
-        BEGIN
-            INSERT INTO edoc.OpinionIncomingDoc (IncomingDocId, OpinionUserId, Opinion, Status, OpinionDate, OpinionType, OpinionUserRoleId)
-            VALUES
-            (@IncomingDocId, @UserId, @Opinion, 1, @current_date, @OpinionType, @RoleId);
+        -- Insert opinion into OpinionIncomingDoc for each recipient
+        INSERT INTO edoc.OpinionIncomingDoc (
+            IncomingDocId,
+            OpinionUserId,
+			OpinionUserRoleId,
+            Opinion,
+            Status,
+            OpinionDate,
+            OpinionType,
+            UserReceive,
+			UserReceiveName,
+			SendDate,
+			ExpiredDate,
+			CompleteDate
+        )
+        SELECT 
+            @IncomingDocId,
+            @UserId,
+			@RoleId,
+            @Opinion,
+            1,
+            @current_date,
+            @OpinionType,
+            RecipientId,
+			RecipientName,
+			@current_date,
+			@ExpiredDate,
+			@CompleteDate
+        FROM #Recipients
+        WHERE RecipientId IS NOT NULL;
 
-            IF @Status > 1 AND  NOT EXISTS
-            (
-                SELECT 1
-                FROM edoc.UserIncomingDoc u
-                WHERE u.IncomingDocId = @IncomingDocId
-                      AND u.UserReceive = @UserId
-                      AND u.UserReceiveRoleId = @RoleId
-            )
-                -- Insert recipients into UserIncomingDoc
-                INSERT INTO edoc.UserIncomingDoc
-                (
-                    IncomingDocId,
-                    UserSend,
-                    UserSendRoleId,
-                    Status,
-                    SendType,
-                    UserReceive,
-                    UserReceiveRoleId,
-                    ProsessRoleId,
-                    SendDate,
-                    ExpiredDate,
-                    CompleteDate,
-                    UserSendStatus,
-                    UserReceiveStatus
-                )
-                VALUES
-                (@IncomingDocId, @UserId, @RoleId, 1, 1, @UserId, @RoleId, 0, @current_date, NULL, NULL, 0,0);
+        -- Insert recipients into UserIncomingDoc
+        INSERT INTO edoc.UserIncomingDoc (
+            IncomingDocId,
+            UserSend,
+            UserSendRoleId,
+            Status,
+            SendType,
+            UserReceive,
+            UserReceiveRoleId,
+            ProsessRoleId,
+			SendDate,
+			ExpiredDate,
+			CompleteDate,
+			UserSendStatus,
+			UserReceiveStatus
+        )
+        SELECT 
+            @IncomingDocId,
+            @UserId,
+            @RoleId,
+            0,
+            @SendType,
+            RecipientId,
+            RecipientRoleId,
+            RecipientProsessRoleId,
+			@current_date,
+			@ExpiredDate,
+			@CompleteDate,
+			@UserSendStatus,
+			@Status
+        FROM #Recipients
+        WHERE RecipientId IS NOT NULL;
 
-        END;
-        COMMIT TRANSACTION;
-
+    COMMIT TRANSACTION;
     /*******************************************************************************
-		* End of SQL statement(s).
-		*******************************************************************************/
+	* End of SQL statement(s).
+	*******************************************************************************/
     END TRY
     BEGIN CATCH
         ROLLBACK TRANSACTION;

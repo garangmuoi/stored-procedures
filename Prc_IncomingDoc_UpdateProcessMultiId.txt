@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]    Script Date: 9/15/2025 3:04:51 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]    Script Date: 9/19/2025 5:18:30 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -18,7 +18,7 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessMultiId]
     @Opinion NVARCHAR(MAX),
     @OpinionType INT,
     @ReturnStatus BIT = NULL,
-    @IncomingDocIds XML
+    @IncomingDocIds XML = NULL
 AS
 BEGIN
     BEGIN TRY
