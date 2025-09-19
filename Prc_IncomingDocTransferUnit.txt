@@ -14,7 +14,8 @@ GO
 ALTER PROCEDURE [edoc].[Prc_IncomingDocTranUnit]
     @Id BIGINT,                    -- IncomingDocId gốc
     @RoleId INT,                   -- RoleId lưu vào UserIncomingDoc
-    @UserId INT                    -- UserId người thực hiện chuyển
+    @UserId INT,                   -- UserId người thực hiện chuyển
+    @Status INT = 10               -- Mặc định là 10 - Chuyển đơn vị
 AS
 BEGIN
     -- SET NOCOUNT ON added to prevent extra result sets from
@@ -89,7 +90,7 @@ BEGIN
         ELSE
         BEGIN
             UPDATE edoc.IncomingDoc
-            SET Status = 10,
+            SET Status = @Status,
                 ModifiedUserId = @UserId,
                 ModifiedDate = @current_date
             WHERE Id = @Id;
