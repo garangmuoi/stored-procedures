@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]    Script Date: 9/14/2025 10:15:56 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]    Script Date: 9/20/2025 8:52:09 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -11,11 +11,14 @@ GO
 -- Author:		Hung Tran
 -- Create date:	18-04-2018
 -- Description:	<Description,,>
+-- Update detail: https://github.com/selab-dev/qlvb-old-backend/pull/33
 -- =============================================
 ALTER procedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]
     -- Add the parameters for the stored procedure here
     @IncomingDocId bigint,
-     @OpinionType INT = NULL
+    @UserIncomingDocId BIGINT = NULL,
+    @OpinionType INT = NULL
+	
 as
 begin
     -- SET NOCOUNT ON added to prevent extra result sets from
@@ -30,24 +33,25 @@ begin
 
         select oid.Id
               ,oid.IncomingDocId
+			  ,oid.UserIncomingDocId
               ,oid.OpinionUserId
+			  ,oid.OpinionUserRoleId
               ,oid.Opinion
               ,oid.Status
               ,oid.OpinionDate
               ,oid.OpinionType
-              ,oid.OpinionUserRoleId
-              ,oid.UserReceive         
-             ,oid.UserReceiveName   
-             ,oid.SendDate            
-             ,oid.ExpiredDate         
-             ,oid.CompleteDate       
-			  ,concat(s.FirstName, '',s.LastName) as OpinionUserName
+              ,UserSendUnitId = r.UnitId
+              ,UserSendUnitName = d_send.Name  
+			  ,concat(s_send.FirstName, '',s_send.LastName) as OpinionUserName
 			  ,r.Name as OpinionUserRoleName
-          from edoc.OpinionIncomingDoc (nolock) oid
-         inner join dbo.Staff (nolock)          s on oid.OpinionUserId = s.Id
-         inner join dbo.Role (nolock)           r on r.Id              = oid.OpinionUserRoleId
-         where oid.IncomingDocId = @IncomingDocId
-        AND (@OpinionType IS NULL OR oid.OpinionType = @OpinionType);;
+        from edoc.OpinionIncomingDoc (nolock) oid
+		LEFT JOIN dbo.Role (NOLOCK) r on r.Id = oid.OpinionUserRoleId
+		LEFT JOIN dbo.Department (NOLOCK) d_send ON r.UnitId = d_send.Id
+        LEFT JOIN dbo.Staff (nolock) s_send on oid.OpinionUserId = s_send.Id        
+        where oid.IncomingDocId = @IncomingDocId
+        AND (@OpinionType IS NULL OR oid.OpinionType = @OpinionType)
+		AND (@UserIncomingDocId IS NULL OR oid.UserIncomingDocId = @UserIncomingDocId)
+        ORDER BY oid.OpinionDate;
 
     /*******************************************************************************
     * End of SQL statment(s).
