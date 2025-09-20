@@ -1,0 +1,413 @@
+USE [DHTN-2025]
+GO
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		Tran Duc Binh
+-- Create date:	13/09/2025
+-- Description:	Update process an incoming document by updating status, log opinion
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessNew]
+    -- Add the parameters for the stored procedure here
+    @IncomingDocId BIGINT,
+    @UserId INT,
+    @RoleId INT,
+	@IncomingDocStatus INT = NULL,
+	@ReturnStatus BIT = NULL,
+    @OpinionStatus INT = NULL, -- -1 Thu hồi, 0: Đã đến, 1:Hoàn thành, 2: Đã đọc, 9: Trả lại
+    @Opinion NVARCHAR(MAX) = NULL,
+    @OpinionType INT = NULL, -- 1: ý kiến, 2: lịch sử chuyển
+	@UserIncomingDocStatus INT = NULL, -- 0: Khởi tạo, 1: Chưa thực hiện, 2: Đang thực hiện, 3: Hoàn thành
+	@SendType INT = NULL, -- 1: Gửi cá nhân, 2: Gửi đơn vị
+	@TransferUserIncomingDocStatus INT = NULL, -- 0: Khởi tạo, 1: Chưa thực hiện, 2: Đang thực hiện, 3: Hoàn thành
+	@TransferOpinion NVARCHAR(MAX) = NULL,
+	@TransferRoleCode NVARCHAR(MAX) = NULL, -- Gửi cho vai trò
+	@Recipients XML = NULL, --Gửi cho cá nhân
+	@ExpiredDate DATETIME = NULL
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        --
+        -- All other declarations and initialisation
+        --
+        DECLARE @current_date DATETIME = GETDATE(),
+				@UserIncomingDocId BIGINT,
+				@UserSendStatus INT,
+				@ReceiveRoleId INT,
+				@ReceiveRoleUnitId INT,
+				@ReceiveRoleUnitName NVARCHAR(MAX);
+
+        /*******************************************************************************
+		* Add SQL statement(s) here.
+		*******************************************************************************/
+		
+		-- Lấy IncomingDoc Status hiện tại
+		SET @UserSendStatus = (
+			SELECT TOP 1 Status
+			FROM edoc.IncomingDoc
+			WHERE Id = @IncomingDocId
+		);
+		
+		-- Cập nhật IncomingDoc ReturnStatus
+        IF @ReturnStatus IS NOT NULL
+		BEGIN
+			-- Update the IncomingDoc ReturnStatus
+			UPDATE edoc.IncomingDoc
+			SET ReturnStatus = @ReturnStatus,
+				ModifiedUserId = @UserId,
+				ModifiedDate = @current_date
+			WHERE Id = @IncomingDocId;
+		END
+
+		-- Cập nhật IncomingDoc Status
+        IF @IncomingDocStatus IS NOT NULL
+		BEGIN
+			-- Update the IncomingDoc status
+			UPDATE edoc.IncomingDoc
+			SET Status = @IncomingDocStatus,
+				ModifiedUserId = @UserId,
+				ModifiedDate = @current_date
+			WHERE Id = @IncomingDocId;
+		END
+
+		-- Kiểm tra xem đã nhận hay chưa
+		SET @UserIncomingDocId = (
+			SELECT TOP 1 Id
+			FROM edoc.UserIncomingDoc
+			WHERE IncomingDocId = @IncomingDocId AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
+		);
+		
+		-- Nếu đã nhận thì ghi lịch sử
+		IF @UserIncomingDocId IS NOT NULL
+		BEGIN
+			INSERT INTO edoc.OpinionIncomingDoc
+			(
+				IncomingDocId,
+				UserIncomingDocId,
+				OpinionUserId,
+				OpinionUserRoleId,
+				Opinion,
+				Status,
+				OpinionDate,
+				OpinionType
+			)
+			VALUES
+			(
+				@IncomingDocId, 
+				@UserIncomingDocId, 
+				@UserId, 
+				@RoleId, 
+				@Opinion, 
+				@OpinionStatus, 
+				@current_date, 
+				@OpinionType
+			);
+
+			IF @UserIncomingDocStatus IS NOT NULL
+			BEGIN
+				UPDATE edoc.UserIncomingDoc 
+				SET 
+					Status = @UserIncomingDocStatus
+				WHERE Id = @UserIncomingDocId
+			END
+
+			IF @UserIncomingDocStatus = 1 -- Hoàn thành
+			BEGIN
+				UPDATE edoc.UserIncomingDoc 
+				SET 
+					CompleteDate = @current_date 
+				WHERE Id = @UserIncomingDocId
+			END
+		END
+		
+		-- Lấy UnitId của current từ Role theo RoleId
+		SET @ReceiveRoleUnitId = (
+			SELECT TOP 1 UnitId
+			FROM dbo.Role
+			WHERE Id = @RoleId
+		);
+
+		-- Nếu có chuyển cho Role
+		IF @TransferRoleCode IS NOT NULL
+		BEGIN
+			-- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
+			SET @ReceiveRoleId = (
+				SELECT TOP 1 Id
+				FROM dbo.Role
+				WHERE UnitId = @ReceiveRoleUnitId AND Code = @TransferRoleCode
+			);
+				
+			-- Kiểm tra xem đã gửi hay chưa
+			SET @UserIncomingDocId = (
+				SELECT TOP 1 Id
+				FROM edoc.UserIncomingDoc
+				WHERE IncomingDocId = @IncomingDocId AND ReceiveRoleId = @ReceiveRoleId
+			);
+			
+			IF @UserIncomingDocId IS NULL
+			BEGIN
+				-- Lấy Tên đơn vị
+				IF @ReceiveRoleUnitId IS NOT NULL
+				BEGIN
+					SET @ReceiveRoleUnitName = (
+						SELECT TOP 1 Name
+						FROM dbo.Department
+						WHERE Id = @ReceiveRoleUnitId
+					);
+				END
+								
+				-- Tạo mới lịch sử cho role đó
+				INSERT INTO edoc.UserIncomingDoc
+				(
+					IncomingDocId,
+					UserSend,
+					UserSendName,
+					UserSendRoleId,
+					--UserReceive,
+					--UserReceiveName,
+					--UserReceiveRoleId,
+					ReceiveRoleId,
+					ReceiveRoleUnitName,
+					SendDate,
+					--ReadDate,
+					ExpiredDate,
+					--CompleteDate,
+					Status,
+					SendType,
+					--ProsessRoleId,
+					UserSendStatus,
+					UserReceiveStatus
+					--Note,
+					--ProsessNote
+				)
+				VALUES
+				(
+					@IncomingDocId,
+					@UserId,
+					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
+					@RoleId,
+					--@UserReceive,
+					--@UserReceiveName,
+					--@UserReceiveRoleId,
+					@ReceiveRoleId,
+					@ReceiveRoleUnitName,
+					@current_date,
+					--@ReadDate,
+					@ExpiredDate,
+					--@CompleteDate,
+					@TransferUserIncomingDocStatus,
+					@SendType,
+					--@ProsessRoleId,
+					@UserSendStatus,
+					@IncomingDocStatus
+					--@Note,
+					--@ProsessNote
+				);
+				
+				SET @UserIncomingDocId = SCOPE_IDENTITY();
+			END
+
+			-- Tạo mới lịch sử chi tiết
+			INSERT INTO edoc.OpinionIncomingDoc
+			(
+				IncomingDocId,
+				UserIncomingDocId,
+				OpinionUserId,
+				OpinionUserRoleId,
+				Opinion,
+				Status,
+				OpinionDate,
+				OpinionType
+			)
+			VALUES
+			(
+				@IncomingDocId, 
+				@UserIncomingDocId, 
+				@UserId, 
+				@RoleId, 
+				@TransferOpinion, 
+				0, -- Đã đến
+				@current_date, 
+				@OpinionType
+			);
+		END		
+			
+		IF @Recipients IS NOT NULL
+		BEGIN
+			-- Declare temp table to parse Recipients
+			IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
+				DROP TABLE #Recipients;
+			CREATE TABLE #Recipients
+			(
+				RecipientId INT,
+				RecipientName NVARCHAR(255),
+				RecipientRoleId INT,
+				RecipientProsessRoleId INT
+			);
+
+			-- Parse the XML into the temp table #Recipients
+			INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId)
+			SELECT 
+				x.v.value('(UserId)[1]', 'INT') AS RecipientId,
+				x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
+				x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
+				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId
+			FROM @Recipients.nodes('/Recipients/Recipient') x(v);
+			
+			-- Cursor to iterate over Recipients
+			DECLARE recipient_cursor CURSOR FOR
+				SELECT RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId
+				FROM #Recipients
+				WHERE RecipientId IS NOT NULL;
+
+			DECLARE @RecipientId INT,
+					@RecipientName NVARCHAR(255),
+					@RecipientRoleId INT,
+					@RecipientProsessRoleId INT;
+
+			OPEN recipient_cursor;
+			FETCH NEXT FROM recipient_cursor 
+			INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId;
+
+			WHILE @@FETCH_STATUS = 0
+			BEGIN
+				-- Kiểm tra xem đã gửi hay chưa
+				SET @UserIncomingDocId = (
+					SELECT TOP 1 Id
+					FROM edoc.UserIncomingDoc
+					WHERE IncomingDocId = @IncomingDocId AND UserReceive = @RecipientId
+				);
+
+				IF @UserIncomingDocId IS NULL
+				BEGIN
+					-- Insert vào UserIncomingDoc
+					INSERT INTO edoc.UserIncomingDoc
+					(
+						IncomingDocId,
+						UserSend,
+						UserSendName,
+						UserSendRoleId,
+						UserReceive,
+						UserReceiveName,
+						UserReceiveRoleId,
+						--ReceiveRoleId, 
+						--ReceiveRoleUnitName,
+						SendDate,
+						--ReadDate,
+						ExpiredDate,
+						--CompleteDate,
+						Status,
+						SendType,
+						ProsessRoleId,
+						UserSendStatus,
+						UserReceiveStatus
+						--Note, 
+						--ProsessNote
+					)
+					VALUES
+					(
+						@IncomingDocId,
+						@UserId,
+						(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
+						@RoleId,
+						@RecipientId,
+						@RecipientName,
+						@RecipientRoleId,
+						--@ReceiveRoleId, 
+						--@ReceiveRoleUnitName,
+						@current_date,
+						--@ReadDate,
+						@ExpiredDate,
+						--@CompleteDate,
+						@TransferUserIncomingDocStatus,
+						@SendType,
+						@RecipientProsessRoleId,
+						@UserSendStatus,
+						@IncomingDocStatus
+						--@Note, 
+						--@ProsessNote
+					);
+
+					-- Lấy ID vừa insert
+					SET @UserIncomingDocId = SCOPE_IDENTITY();
+				END
+
+				-- Insert tiếp vào OpinionIncomingDoc
+				INSERT INTO edoc.OpinionIncomingDoc
+				(
+					IncomingDocId,
+					UserIncomingDocId,
+					OpinionUserId,
+					OpinionUserRoleId,
+					Opinion,
+					Status,
+					OpinionDate,
+					OpinionType
+				)
+				VALUES
+				(
+					@IncomingDocId,
+					@UserIncomingDocId,
+					@UserId,
+					@RoleId,
+					@TransferOpinion,
+					0, -- Đã đến
+					@current_date,
+					@OpinionType
+				);
+
+				FETCH NEXT FROM recipient_cursor 
+				INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId;
+			END
+
+			CLOSE recipient_cursor;
+			DEALLOCATE recipient_cursor;
+		END
+			
+        COMMIT TRANSACTION;
+
+    /*******************************************************************************
+		* End of SQL statement(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(
+			@ErrorMessage,
+			@ErrorSeverity,
+			@ErrorState,
+			@ErrorNumber,    -- parameter: original error number.
+			@ErrorSeverity,  -- parameter: original error severity.
+			@ErrorState,     -- parameter: original error state.
+			@ErrorProcedure, -- parameter: original error procedure name.
+			@ErrorLine       -- parameter: original error line number.
+        );
+    END CATCH;
+END;
