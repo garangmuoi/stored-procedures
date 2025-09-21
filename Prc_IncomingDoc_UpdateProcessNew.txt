@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/20/2025 10:44:18 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -39,6 +39,7 @@ BEGIN
 				@UserIncomingDocId BIGINT,
 				@UserSendStatus INT,
 				@ReceiveRoleId INT,
+				@ReceiveRoleName NVARCHAR(MAX),
 				@ReceiveRoleUnitId INT,
 				@ReceiveRoleUnitName NVARCHAR(MAX);
 
@@ -136,11 +137,15 @@ BEGIN
 		IF @TransferRoleCode IS NOT NULL
 		BEGIN
 			-- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
-			SET @ReceiveRoleId = (
-				SELECT TOP 1 Id
-				FROM dbo.Role
-				WHERE UnitId = @ReceiveRoleUnitId AND Code = @TransferRoleCode
-			);
+			SET @ReceiveRoleId = NULL;
+			SET @ReceiveRoleName = NULL;
+
+			SELECT TOP 1 
+				@ReceiveRoleId = Id,
+				@ReceiveRoleName = Name
+			FROM dbo.Role
+			WHERE UnitId = @ReceiveRoleUnitId 
+				AND Code = @TransferRoleCode;
 				
 			-- Kiểm tra xem đã gửi hay chưa
 			SET @UserIncomingDocId = (
@@ -169,7 +174,7 @@ BEGIN
 					UserSendName,
 					UserSendRoleId,
 					--UserReceive,
-					--UserReceiveName,
+					UserReceiveName,
 					--UserReceiveRoleId,
 					ReceiveRoleId,
 					ReceiveRoleUnitName,
@@ -192,7 +197,7 @@ BEGIN
 					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
 					@RoleId,
 					--@UserReceive,
-					--@UserReceiveName,
+					@ReceiveRoleName,
 					--@UserReceiveRoleId,
 					@ReceiveRoleId,
 					@ReceiveRoleUnitName,
