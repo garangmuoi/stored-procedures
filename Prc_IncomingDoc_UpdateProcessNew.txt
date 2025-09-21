@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 1:32:26 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 6:33:32 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -18,16 +18,17 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessNew]
     @RoleId INT,
 	@IncomingDocStatus INT = NULL,
 	@ReturnStatus BIT = NULL,
-    @OpinionStatus INT = NULL, -- -1 Thu hồi, 0: Đã đến, 1:Hoàn thành, 2: Đã đọc, 9: Trả lại
+    @OpinionStatus INT = NULL,
     @Opinion NVARCHAR(MAX) = NULL,
     @OpinionType INT = NULL, -- 1: ý kiến, 2: lịch sử chuyển
-	@UserIncomingDocStatus INT = NULL, -- 0: Khởi tạo, 1: Chưa thực hiện, 2: Đang thực hiện, 3: Hoàn thành
+	@UserIncomingDocStatus INT = NULL,
 	@SendType INT = NULL, -- 1: Gửi cá nhân, 2: Gửi đơn vị
-	@TransferUserIncomingDocStatus INT = NULL, -- 0: Khởi tạo, 1: Chưa thực hiện, 2: Đang thực hiện, 3: Hoàn thành
+	@TransferUserIncomingDocStatus INT = NULL,
 	@TransferOpinion NVARCHAR(MAX) = NULL,
 	@TransferRoleCode NVARCHAR(MAX) = NULL, -- Gửi cho vai trò
 	@Recipients XML = NULL, --Gửi cho cá nhân
-	@ExpiredDate DATETIME = NULL
+	@ExpiredDate DATETIME = NULL,
+	@DocBookId INT = NULL
 AS
 BEGIN
     BEGIN TRY
@@ -72,6 +73,17 @@ BEGIN
 			-- Update the IncomingDoc status
 			UPDATE edoc.IncomingDoc
 			SET Status = @IncomingDocStatus,
+				ModifiedUserId = @UserId,
+				ModifiedDate = @current_date
+			WHERE Id = @IncomingDocId;
+		END
+
+		-- Cập nhật IncomingDoc DocBookId
+		IF @DocBookId IS NOT NULL
+		BEGIN
+			-- Update the IncomingDoc status
+			UPDATE edoc.IncomingDoc
+			SET DocBookId = @DocBookId,
 				ModifiedUserId = @UserId,
 				ModifiedDate = @current_date
 			WHERE Id = @IncomingDocId;
@@ -291,32 +303,35 @@ BEGIN
 				RecipientId INT,
 				RecipientName NVARCHAR(255),
 				RecipientRoleId INT,
-				RecipientProsessRoleId INT
+				RecipientProsessRoleId INT,
+				RecipientExpiredDate DATETIME
 			);
 
 			-- Parse the XML into the temp table #Recipients
-			INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId)
+			INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate)
 			SELECT 
 				x.v.value('(UserId)[1]', 'INT') AS RecipientId,
 				x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
 				x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
-				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId
+				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId,
+				x.v.value('(ExpiredDate)[1]', 'DATETIME') AS ExpiredDate
 			FROM @Recipients.nodes('/Recipients/Recipient') x(v);
 			
 			-- Cursor to iterate over Recipients
 			DECLARE recipient_cursor CURSOR FOR
-				SELECT RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId
+				SELECT RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate
 				FROM #Recipients
 				WHERE RecipientId IS NOT NULL;
 
 			DECLARE @RecipientId INT,
 					@RecipientName NVARCHAR(255),
 					@RecipientRoleId INT,
-					@RecipientProsessRoleId INT;
+					@RecipientProsessRoleId INT,
+					@RecipientExpiredDate DATETIME;
 
 			OPEN recipient_cursor;
 			FETCH NEXT FROM recipient_cursor 
-			INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId;
+			INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId, @RecipientExpiredDate;
 
 			WHILE @@FETCH_STATUS = 0
 			BEGIN
@@ -366,7 +381,7 @@ BEGIN
 						--@ReceiveRoleUnitName,
 						@current_date,
 						--@ReadDate,
-						@ExpiredDate,
+						@RecipientExpiredDate,
 						--@CompleteDate,
 						@TransferUserIncomingDocStatus,
 						@SendType,
@@ -422,7 +437,7 @@ BEGIN
 				END
 
 				FETCH NEXT FROM recipient_cursor 
-				INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId;
+				INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId, @RecipientExpiredDate;
 			END
 
 			CLOSE recipient_cursor;
