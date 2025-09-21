@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/21/2025 11:02:42 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/21/2025 12:21:21 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -36,7 +36,8 @@ BEGIN
                 @OriginalUnitId INT,
                 @OriginalStatus INT,
                 @UserIncomingDocId BIGINT,
-                @ReceiveRoleId INT;
+                @ReceiveRoleId INT,
+                @ReceiveRoleName NVARCHAR(MAX);
 
         /*******************************************************************************
 		* Add SQL statment(s) here.
@@ -290,11 +291,15 @@ BEGIN
                 --(@NewIncomingDocId, @UserId, N'Chuyển văn bản đến:' + @Name, @current_date, 1, @RoleId);
 
                 -- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
-			    SET @ReceiveRoleId = (
-				    SELECT TOP 1 Id
-				    FROM dbo.Role
-				    WHERE UnitId = @UnitId AND Code = 'VanThuDonVi'
-			    );
+                SET @ReceiveRoleId = NULL;
+			    SET @ReceiveRoleName = NULL;
+
+                SELECT TOP 1 
+				    @ReceiveRoleId = Id,
+				    @ReceiveRoleName = Name
+			    FROM dbo.Role
+			    WHERE UnitId = @UnitId 
+				AND Code = 'VanThuDonVi';
 
                 -- Kiểm tra xem đã gửi hay chưa
 			    SET @UserIncomingDocId = (
@@ -313,7 +318,7 @@ BEGIN
 					    UserSendName,
 					    UserSendRoleId,
 					    --UserReceive,
-					    --UserReceiveName,
+					    UserReceiveName,
 					    --UserReceiveRoleId,
 					    ReceiveRoleId,
 					    ReceiveRoleUnitName,
@@ -336,7 +341,7 @@ BEGIN
 					    (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
 					    @RoleId,
 					    --@UserReceive,
-					    --@UserReceiveName,
+					    @ReceiveRoleName,
 					    --@UserReceiveRoleId,
 					    @ReceiveRoleId,
 					    @Name,
@@ -374,7 +379,7 @@ BEGIN
 				    @UserIncomingDocId, 
 				    @UserId, 
 				    @RoleId, 
-				    N'Chuyển văn bản đến:' + @Name, 
+				    N'Chuyển văn bản đến ' + @Name, 
 				    0, -- Đã đến
 				    @current_date, 
 				    2 -- Lịch sử chuyển

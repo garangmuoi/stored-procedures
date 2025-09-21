@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]    Script Date: 9/21/2025 10:56:16 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]    Script Date: 9/21/2025 12:29:22 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -20,31 +20,38 @@ BEGIN
 
     BEGIN TRY
         
+    ;WITH CTE_IncomingDocs AS
+    (
+        SELECT Id
+        FROM edoc.IncomingDoc
+        WHERE ParentId = @IncomingDocId
+    )
     SELECT
-        Id
-        ,IncomingDocId
-        ,UserSend
-        ,UserSendName
-        ,UserSendRoleId
-        ,UserReceive
-        ,UserReceiveName
-        ,UserReceiveRoleId
-        ,ReceiveRoleId
-        ,ReceiveRoleUnitName
-        ,SendDate
-        ,ReadDate
-        ,ExpiredDate
-        ,CompleteDate
-        ,Status
-        ,SendType
-        ,ProsessRoleId
-        ,UserSendStatus
-        ,UserReceiveStatus
-        ,Note
-        ,ProsessNote
-    FROM UserIncomingDoc(NOLOCK)
-    WHERE IncomingDocId = @IncomingDocId
-    ORDER BY Id
+        u.Id
+        ,u.IncomingDocId
+        ,u.UserSend
+        ,u.UserSendName
+        ,u.UserSendRoleId
+        ,u.UserReceive
+        ,u.UserReceiveName
+        ,u.UserReceiveRoleId
+        ,u.ReceiveRoleId
+        ,u.ReceiveRoleUnitName
+        ,u.SendDate
+        ,u.ReadDate
+        ,u.ExpiredDate
+        ,u.CompleteDate
+        ,u.Status
+        ,u.SendType
+        ,u.ProsessRoleId
+        ,u.UserSendStatus
+        ,u.UserReceiveStatus
+        ,u.Note
+        ,u.ProsessNote
+    FROM edoc.UserIncomingDoc u WITH (NOLOCK)
+    WHERE u.IncomingDocId = @IncomingDocId
+            OR u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs)
+    ORDER BY u.Id;
 
     END TRY
     BEGIN CATCH
