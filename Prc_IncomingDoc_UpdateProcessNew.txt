@@ -141,7 +141,7 @@ BEGIN
 				WHERE Id = @UserIncomingDocId
 			END
 
-			IF @UserIncomingDocStatus = 6 -- Đã đọc
+			IF @OpinionStatus = 6 -- Đã đọc
 			BEGIN
 				UPDATE edoc.UserIncomingDoc 
 				SET 
