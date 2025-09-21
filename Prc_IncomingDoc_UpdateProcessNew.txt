@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 10:12:15 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 1:32:26 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -90,7 +90,7 @@ BEGIN
 			SET @OpinionIncomingDocId = (
 				SELECT TOP 1 Id
 				FROM edoc.OpinionIncomingDoc
-				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
+				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 			);
 
 			IF @OpinionIncomingDocId IS NULL
@@ -133,11 +133,19 @@ BEGIN
 				WHERE Id = @UserIncomingDocId
 			END
 
-			IF @UserIncomingDocStatus = 1 -- Hoàn thành
+			IF @UserIncomingDocStatus = 9 -- Hoàn thành
 			BEGIN
 				UPDATE edoc.UserIncomingDoc 
 				SET 
 					CompleteDate = @current_date 
+				WHERE Id = @UserIncomingDocId
+			END
+
+			IF @UserIncomingDocStatus = 6 -- Đã đọc
+			BEGIN
+				UPDATE edoc.UserIncomingDoc 
+				SET 
+					ReadDate = @current_date 
 				WHERE Id = @UserIncomingDocId
 			END
 		END
@@ -237,7 +245,7 @@ BEGIN
 			SET @OpinionIncomingDocId = (
 				SELECT TOP 1 Id
 				FROM edoc.OpinionIncomingDoc
-				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
+				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 			);
 
 			IF @OpinionIncomingDocId IS NULL
@@ -377,7 +385,7 @@ BEGIN
 				SET @OpinionIncomingDocId = (
 					SELECT TOP 1 Id
 					FROM edoc.OpinionIncomingDoc
-					WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
+					WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 				);
 
 				IF @OpinionIncomingDocId IS NULL
