@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]    Script Date: 9/21/2025 2:16:16 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]    Script Date: 9/21/2025 2:46:31 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -11,7 +11,7 @@ GO
 -- Create date:	13/09/2025
 -- Description:	Get UserIncomingDoc
 -- =============================================
-CREATE PROCEDURE [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]
+ALTER PROCEDURE [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]
     -- Add the parameters for the stored procedure here
     @IncomingDocId BIGINT
 AS
@@ -36,6 +36,7 @@ BEGIN
         ,u.UserReceiveName
         ,u.UserReceiveRoleId
         ,u.ReceiveRoleId
+        ,r.Name as ReceiveRoleName
         ,u.ReceiveRoleUnitName
         ,u.SendDate
         ,u.ReadDate
@@ -49,6 +50,7 @@ BEGIN
         ,u.Note
         ,u.ProsessNote
     FROM edoc.UserIncomingDoc u WITH (NOLOCK)
+    LEFT JOIN dbo.Role r on u.ReceiveRoleId = r.Id
     WHERE 
         u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs) AND u.Status = 1
     ORDER BY u.Id;
