@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]    Script Date: 9/19/2025 4:48:46 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocByIncomingDocId]    Script Date: 9/21/2025 10:56:16 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -21,29 +21,30 @@ BEGIN
     BEGIN TRY
         
     SELECT
-    Id
-    ,IncomingDocId
-    ,UserSend
-    ,UserSendName
-    ,UserSendRoleId
-    ,UserReceive
-    ,UserReceiveName
-    ,UserReceiveRoleId
-    ,ReceiveRoleId
-    ,ReceiveRoleUnitName
-    ,SendDate
-    ,ReadDate
-    ,ExpiredDate
-    ,CompleteDate
-    ,Status
-    ,SendType
-    ,ProsessRoleId
-    ,UserSendStatus
-    ,UserReceiveStatus
-    ,Note
-    ,ProsessNote
+        Id
+        ,IncomingDocId
+        ,UserSend
+        ,UserSendName
+        ,UserSendRoleId
+        ,UserReceive
+        ,UserReceiveName
+        ,UserReceiveRoleId
+        ,ReceiveRoleId
+        ,ReceiveRoleUnitName
+        ,SendDate
+        ,ReadDate
+        ,ExpiredDate
+        ,CompleteDate
+        ,Status
+        ,SendType
+        ,ProsessRoleId
+        ,UserSendStatus
+        ,UserReceiveStatus
+        ,Note
+        ,ProsessNote
     FROM UserIncomingDoc(NOLOCK)
-    WHERE IncomingDocId = @IncomingDocId;
+    WHERE IncomingDocId = @IncomingDocId
+    ORDER BY Id
 
     END TRY
     BEGIN CATCH

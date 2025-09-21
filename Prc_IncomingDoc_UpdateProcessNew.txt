@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/20/2025 10:44:18 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 10:12:15 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -37,6 +37,7 @@ BEGIN
         --
         DECLARE @current_date DATETIME = GETDATE(),
 				@UserIncomingDocId BIGINT,
+				@OpinionIncomingDocId BIGINT,
 				@UserSendStatus INT,
 				@ReceiveRoleId INT,
 				@ReceiveRoleName NVARCHAR(MAX),
@@ -86,28 +87,43 @@ BEGIN
 		-- Nếu đã nhận thì ghi lịch sử
 		IF @UserIncomingDocId IS NOT NULL
 		BEGIN
-			INSERT INTO edoc.OpinionIncomingDoc
-			(
-				IncomingDocId,
-				UserIncomingDocId,
-				OpinionUserId,
-				OpinionUserRoleId,
-				Opinion,
-				Status,
-				OpinionDate,
-				OpinionType
-			)
-			VALUES
-			(
-				@IncomingDocId, 
-				@UserIncomingDocId, 
-				@UserId, 
-				@RoleId, 
-				@Opinion, 
-				@OpinionStatus, 
-				@current_date, 
-				@OpinionType
+			SET @OpinionIncomingDocId = (
+				SELECT TOP 1 Id
+				FROM edoc.OpinionIncomingDoc
+				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
 			);
+
+			IF @OpinionIncomingDocId IS NULL
+			BEGIN
+				INSERT INTO edoc.OpinionIncomingDoc
+				(
+					IncomingDocId,
+					UserIncomingDocId,
+					OpinionUserId,
+					OpinionUserRoleId,
+					Opinion,
+					Status,
+					OpinionDate,
+					OpinionType
+				)
+				VALUES
+				(
+					@IncomingDocId, 
+					@UserIncomingDocId, 
+					@UserId, 
+					@RoleId, 
+					@Opinion, 
+					@OpinionStatus, 
+					@current_date, 
+					@OpinionType
+				);
+			END
+			ELSE
+			BEGIN
+				UPDATE edoc.OpinionIncomingDoc 
+				SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+				WHERE Id = @OpinionIncomingDocId
+			END
 
 			IF @UserIncomingDocStatus IS NOT NULL
 			BEGIN
@@ -218,28 +234,43 @@ BEGIN
 			END
 
 			-- Tạo mới lịch sử chi tiết
-			INSERT INTO edoc.OpinionIncomingDoc
-			(
-				IncomingDocId,
-				UserIncomingDocId,
-				OpinionUserId,
-				OpinionUserRoleId,
-				Opinion,
-				Status,
-				OpinionDate,
-				OpinionType
-			)
-			VALUES
-			(
-				@IncomingDocId, 
-				@UserIncomingDocId, 
-				@UserId, 
-				@RoleId, 
-				@TransferOpinion, 
-				0, -- Đã đến
-				@current_date, 
-				@OpinionType
+			SET @OpinionIncomingDocId = (
+				SELECT TOP 1 Id
+				FROM edoc.OpinionIncomingDoc
+				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
 			);
+
+			IF @OpinionIncomingDocId IS NULL
+			BEGIN
+				INSERT INTO edoc.OpinionIncomingDoc
+				(
+					IncomingDocId,
+					UserIncomingDocId,
+					OpinionUserId,
+					OpinionUserRoleId,
+					Opinion,
+					Status,
+					OpinionDate,
+					OpinionType
+				)
+				VALUES
+				(
+					@IncomingDocId, 
+					@UserIncomingDocId, 
+					@UserId, 
+					@RoleId, 
+					@TransferOpinion, 
+					0, -- Đã đến
+					@current_date, 
+					@OpinionType
+				);
+			END
+			ELSE
+			BEGIN
+				UPDATE edoc.OpinionIncomingDoc 
+				SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+				WHERE Id = @OpinionIncomingDocId
+			END
 		END		
 			
 		IF @Recipients IS NOT NULL
@@ -342,29 +373,45 @@ BEGIN
 					SET @UserIncomingDocId = SCOPE_IDENTITY();
 				END
 
-				-- Insert tiếp vào OpinionIncomingDoc
-				INSERT INTO edoc.OpinionIncomingDoc
-				(
-					IncomingDocId,
-					UserIncomingDocId,
-					OpinionUserId,
-					OpinionUserRoleId,
-					Opinion,
-					Status,
-					OpinionDate,
-					OpinionType
-				)
-				VALUES
-				(
-					@IncomingDocId,
-					@UserIncomingDocId,
-					@UserId,
-					@RoleId,
-					@TransferOpinion,
-					0, -- Đã đến
-					@current_date,
-					@OpinionType
+				-- Tạo mới lịch sử chi tiết
+				SET @OpinionIncomingDocId = (
+					SELECT TOP 1 Id
+					FROM edoc.OpinionIncomingDoc
+					WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId
 				);
+
+				IF @OpinionIncomingDocId IS NULL
+				BEGIN
+					-- Insert tiếp vào OpinionIncomingDoc
+					INSERT INTO edoc.OpinionIncomingDoc
+					(
+						IncomingDocId,
+						UserIncomingDocId,
+						OpinionUserId,
+						OpinionUserRoleId,
+						Opinion,
+						Status,
+						OpinionDate,
+						OpinionType
+					)
+					VALUES
+					(
+						@IncomingDocId,
+						@UserIncomingDocId,
+						@UserId,
+						@RoleId,
+						@TransferOpinion,
+						0, -- Đã đến
+						@current_date,
+						@OpinionType
+					);
+					END
+				ELSE
+				BEGIN
+					UPDATE edoc.OpinionIncomingDoc 
+					SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+					WHERE Id = @OpinionIncomingDocId
+				END
 
 				FETCH NEXT FROM recipient_cursor 
 				INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId;
