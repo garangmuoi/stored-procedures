@@ -49,8 +49,9 @@ BEGIN
         ,u.Note
         ,u.ProsessNote
     FROM edoc.UserIncomingDoc u WITH (NOLOCK)
-    WHERE u.IncomingDocId = @IncomingDocId
-            OR u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs)
+    WHERE 
+            (u.IncomingDocId = @IncomingDocId)
+            OR (u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs) AND u.SendType = 2)
     ORDER BY u.Id;
 
     END TRY
