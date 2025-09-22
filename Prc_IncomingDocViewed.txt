@@ -87,29 +87,29 @@ BEGIN
 		  FROM edoc.IncomingDoc (nolock) id
 		WHERE id.Id = @IncomingDocId
 		--
-		IF EXISTS (
-			SELECT 1
-			  FROM edoc.UserIncomingDoc (nolock) uid
-			WHERE uid.Status = 0
-				AND uid.UserReceive = @UserId
-				AND uid.IncomingDocId = @IncomingDocId
-				AND uid.SendType = 1
-		) BEGIN
-			SELECT @user_incoming_doc_id = MAX(uid.Id)
-			  FROM edoc.UserIncomingDoc (nolock) uid
-			WHERE uid.Status = 0
-				AND uid.UserReceive = @UserId
-				AND uid.IncomingDocId = @IncomingDocId
-				AND uid.SendType = 1
-			--
+		--IF EXISTS (
+		--	SELECT 1
+		--	  FROM edoc.UserIncomingDoc (nolock) uid
+		--	WHERE uid.Status = 0
+		--		AND uid.UserReceive = @UserId
+		--		AND uid.IncomingDocId = @IncomingDocId
+		--		AND uid.SendType = 1
+		--) BEGIN
+		--	SELECT @user_incoming_doc_id = MAX(uid.Id)
+		--	  FROM edoc.UserIncomingDoc (nolock) uid
+		--	WHERE uid.Status = 0
+		--		AND uid.UserReceive = @UserId
+		--		AND uid.IncomingDocId = @IncomingDocId
+		--		AND uid.SendType = 1
+		--	--
 
-				UPDATE edoc.UserIncomingDoc
-				   SET ReadDate = @current_date
-				 WHERE Status = 0
-				AND UserReceive = @UserId
-				AND IncomingDocId = @IncomingDocId
-				AND SendType = 1
-				and ReadDate IS NULL
+		--		UPDATE edoc.UserIncomingDoc
+		--		   SET ReadDate = @current_date
+		--		 WHERE Status = 0
+		--		AND UserReceive = @UserId
+		--		AND IncomingDocId = @IncomingDocId
+		--		AND SendType = 1
+		--		and ReadDate IS NULL
 			--IF EXISTS(
 			--	SELECT 1
 			--	  FROM edoc.UserIncomingDoc (nolock) uid
@@ -126,20 +126,20 @@ BEGIN
 			--	   SET UserReceive = @UserId
 			--	 WHERE Id = @user_incoming_doc_id
 			--END
-		END
-		ELSE
-		BEGIN
-			INSERT INTO edoc.UserIncomingDoc
-					   (IncomingDocId
-					   ,UserReceive
-					   ,ReadDate
-					   ,Status)
-				 VALUES
-					   (@IncomingDocId
-					   ,@UserId
-					   ,@current_date
-					   ,0)
-		END
+		--END
+		--ELSE
+		--BEGIN
+		--	INSERT INTO edoc.UserIncomingDoc
+		--			   (IncomingDocId
+		--			   ,UserReceive
+		--			   ,ReadDate
+		--			   ,Status)
+		--		 VALUES
+		--			   (@IncomingDocId
+		--			   ,@UserId
+		--			   ,@current_date
+		--			   ,0)
+		--END
 		-- trường hợp cán bộ là đại diện phòng ban
 		IF @is_represent_department = 1
 		BEGIN
