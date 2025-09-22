@@ -1,0 +1,438 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocViewed]    Script Date: 9/22/2025 2:38:34 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+-- =============================================
+-- Author:		Hung Tran
+-- Create date:	20-04-2018
+-- Description:	<Description,,>
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDocViewed]
+	-- Add the parameters for the stored procedure here
+	@IncomingDocId		bigint,
+	@UserId				int
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    --SET NOCOUNT ON;
+
+    BEGIN TRY
+		--
+		-- All other declarations and initialisation
+		--
+		DECLARE @current_date								datetime		= GETDATE(),
+				@user_incoming_doc_id						bigint,
+				@department_incoming_doc_id					bigint,
+				@previous_incoming_doc_id					bigint,
+				@previous_department_incoming_doc_id		bigint,
+				@previous_unit_incoming_doc_id				bigint,
+				@previous_user_incoming_doc_id				bigint,
+				@previous_outgoing_doc_id					bigint,
+				@previous_department_outgoing_doc_id		bigint,
+				@previous_unit_outgoing_doc_id				bigint,
+				@previous_user_outgoing_doc_id				bigint,
+				@department_id								int,
+				@allow_department_id						int,
+				@is_represent_department					bit,
+				@is_represent_unit							bit;
+				
+		/*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+		--
+		SELECT TOP 1 @department_id = s.DepartmentId
+			  ,@is_represent_department = s.IsRepresentDepartment
+			  ,@is_represent_unit = s.IsRepresentUnit
+		  FROM dbo.Staff (nolock) s
+		WHERE s.Id = @UserId
+		--
+		;WITH Temp AS (
+			SELECT d.Id
+				  ,d.ParentId
+				  ,d.IsUnit
+				  ,d.AllowDocBook
+			  FROM dbo.Department (nolock) d
+			WHERE d.IsLocked = 0
+				AND d.IsDeleted = 0
+				AND d.Id = @department_id
+			UNION ALL
+			SELECT d.Id
+				  ,d.ParentId
+				  ,d.IsUnit
+				  ,d.AllowDocBook
+			  FROM Temp t, dbo.Department (nolock) d
+			WHERE d.IsLocked = 0
+				AND d.IsDeleted = 0
+				AND t.ParentId = d.Id
+		)
+		SELECT TOP 1 @allow_department_id = t.Id
+		  FROM Temp t
+		WHERE t.IsUnit = 1
+			OR t.AllowDocBook = 1
+		--
+		SELECT TOP 1 @previous_incoming_doc_id = id.PreviousIncomingDocId
+			  ,@previous_user_incoming_doc_id = id.PreviousUserIncomingDocId
+			  ,@previous_outgoing_doc_id = id.PreviousOutgoingDocId
+			  ,@previous_user_outgoing_doc_id = id.PreviousUserOutgoingDocId
+		  FROM edoc.IncomingDoc (nolock) id
+		WHERE id.Id = @IncomingDocId
+		--
+		IF EXISTS (
+			SELECT 1
+			  FROM edoc.UserIncomingDoc (nolock) uid
+			WHERE uid.Status = 0
+				AND uid.UserReceive = @UserId
+				AND uid.IncomingDocId = @IncomingDocId
+				AND uid.SendType = 1
+		) BEGIN
+			SELECT @user_incoming_doc_id = MAX(uid.Id)
+			  FROM edoc.UserIncomingDoc (nolock) uid
+			WHERE uid.Status = 0
+				AND uid.UserReceive = @UserId
+				AND uid.IncomingDocId = @IncomingDocId
+				AND uid.SendType = 1
+			--
+
+				UPDATE edoc.UserIncomingDoc
+				   SET ReadDate = @current_date
+				 WHERE Status = 0
+				AND UserReceive = @UserId
+				AND IncomingDocId = @IncomingDocId
+				AND SendType = 1
+				and ReadDate IS NULL
+			--IF EXISTS(
+			--	SELECT 1
+			--	  FROM edoc.UserIncomingDoc (nolock) uid
+			--	WHERE uid.Id = @user_incoming_doc_id
+			--		AND uid.ReadDate IS NULL
+			--) BEGIN
+			--	UPDATE edoc.UserIncomingDoc
+			--	   SET ReadDate = @current_date
+			--	 WHERE Id = @user_incoming_doc_id
+			--END
+			--ELSE
+			--BEGIN
+			--	UPDATE edoc.UserIncomingDoc
+			--	   SET UserReceive = @UserId
+			--	 WHERE Id = @user_incoming_doc_id
+			--END
+		END
+		ELSE
+		BEGIN
+			INSERT INTO edoc.UserIncomingDoc
+					   (IncomingDocId
+					   ,UserReceive
+					   ,ReadDate
+					   ,Status)
+				 VALUES
+					   (@IncomingDocId
+					   ,@UserId
+					   ,@current_date
+					   ,0)
+		END
+		-- trường hợp cán bộ là đại diện phòng ban
+		IF @is_represent_department = 1
+		BEGIN
+			SELECT @department_incoming_doc_id = MAX(uid.Id)
+			  FROM edoc.UserIncomingDoc (nolock) uid
+			WHERE uid.Status = 0
+				AND uid.UserReceive = @department_id
+				AND uid.IncomingDocId = @IncomingDocId
+				AND uid.SendType = 2
+			--
+			IF @department_incoming_doc_id IS NOT NULL AND @department_incoming_doc_id > 0
+			BEGIN
+				IF EXISTS(
+					SELECT 1
+					  FROM edoc.UserIncomingDoc (nolock) uid
+					WHERE uid.Id = @department_incoming_doc_id
+						AND uid.ReadDate IS NULL
+				) BEGIN
+					UPDATE edoc.UserIncomingDoc
+					   SET ReadDate = @current_date
+					 WHERE Id = @department_incoming_doc_id
+				END
+			END
+			-- trường hợp văn bản được gửi đến từ văn bản đến khác
+			IF @previous_incoming_doc_id IS NOT NULL AND @previous_incoming_doc_id > 0
+			BEGIN
+				SELECT @previous_department_incoming_doc_id = MAX(uid.Id)
+				  FROM edoc.UserIncomingDoc (nolock) uid
+				WHERE uid.Status = 0
+					AND uid.UserReceive = @department_id
+					AND uid.IncomingDocId = @previous_incoming_doc_id
+					AND uid.SendType = 2
+				--
+				IF @previous_department_incoming_doc_id IS NOT NULL AND @previous_department_incoming_doc_id > 0
+				BEGIN
+					IF EXISTS(
+						SELECT 1
+						  FROM edoc.UserIncomingDoc (nolock) uid
+						WHERE uid.Id = @previous_department_incoming_doc_id
+							AND uid.ReadDate IS NULL
+					) BEGIN
+						UPDATE edoc.UserIncomingDoc
+						   SET ReadDate = @current_date
+						 WHERE Id = @previous_department_incoming_doc_id
+					END
+				END
+			END
+			-- trường hợp văn bản được gửi đến từ văn bản phát hành khác
+			IF @previous_outgoing_doc_id IS NOT NULL AND @previous_outgoing_doc_id > 0
+			BEGIN
+				SELECT @previous_department_outgoing_doc_id = MAX(uod.Id)
+				  FROM edoc.UserOutgoingDoc (nolock) uod
+				WHERE uod.Status = 0
+					AND uod.UserReceive = @department_id
+					AND uod.OutgoingDocId = @previous_outgoing_doc_id
+					AND uod.SendType = 2
+				--
+				IF @previous_department_outgoing_doc_id IS NOT NULL AND @previous_department_outgoing_doc_id > 0
+				BEGIN
+					IF EXISTS(
+						SELECT 1
+						  FROM edoc.UserOutgoingDoc (nolock) uod
+						WHERE uod.Id = @previous_department_outgoing_doc_id
+							AND uod.ReadDate IS NULL
+					) BEGIN
+						UPDATE edoc.UserOutgoingDoc
+						   SET ReadDate = @current_date
+						 WHERE Id = @previous_department_outgoing_doc_id
+					END
+				END
+			END
+		END
+		-- trường hợp cán bộ là đại diện đơn vị hoặc được quyền xem toàn bộ văn bản của đơn vị
+		IF @is_represent_unit = 1 OR EXISTS(
+			SELECT 1 
+			  FROM dbo.Action (nolock) a
+			INNER JOIN dbo.ActionOfRole (nolock) aor ON aor.ActionId = a.Id
+			INNER JOIN dbo.RoleOfStaff (nolock) ros ON ros.RoleId = aor.RoleId
+			WHERE ros.StaffId = @UserId
+				AND a.Code = '2018000460'
+		) BEGIN
+			-- trường hợp văn bản được gửi đến từ văn bản đến khác
+			IF @previous_incoming_doc_id IS NOT NULL AND @previous_incoming_doc_id > 0
+			BEGIN
+				SELECT @previous_unit_incoming_doc_id = MAX(uid.Id)
+				  FROM edoc.UserIncomingDoc (nolock) uid
+				WHERE uid.Status = 0
+					AND uid.UserReceive = @allow_department_id
+					AND uid.IncomingDocId = @previous_incoming_doc_id
+					AND uid.SendType = 2
+				--
+				IF @previous_unit_incoming_doc_id IS NOT NULL AND @previous_unit_incoming_doc_id > 0
+				BEGIN
+					IF EXISTS(
+						SELECT 1
+						  FROM edoc.UserIncomingDoc (nolock) uid
+						WHERE uid.Id = @previous_unit_incoming_doc_id
+							AND uid.ReadDate IS NULL
+					) BEGIN
+						UPDATE edoc.UserIncomingDoc
+						   SET ReadDate = @current_date
+						 WHERE Id = @previous_unit_incoming_doc_id
+					END
+				END
+			END
+			-- trường hợp văn bản được gửi đến từ văn bản phát hành khác
+			IF @previous_outgoing_doc_id IS NOT NULL AND @previous_outgoing_doc_id > 0
+			BEGIN
+				SELECT @previous_unit_outgoing_doc_id = MAX(uod.Id)
+				  FROM edoc.UserOutgoingDoc (nolock) uod
+				WHERE uod.Status = 0
+					AND uod.UserReceive = @allow_department_id
+					AND uod.OutgoingDocId = @previous_outgoing_doc_id
+					AND uod.SendType = 2
+				--
+				IF @previous_unit_outgoing_doc_id IS NOT NULL AND @previous_unit_outgoing_doc_id > 0
+				BEGIN
+					IF EXISTS(
+						SELECT 1
+						  FROM edoc.UserOutgoingDoc (nolock) uod
+						WHERE uod.Id = @previous_unit_outgoing_doc_id
+							AND uod.ReadDate IS NULL
+					) BEGIN
+						UPDATE edoc.UserOutgoingDoc
+						   SET ReadDate = @current_date
+						 WHERE Id = @previous_unit_outgoing_doc_id
+					END
+				END
+			END
+		END
+		----
+		--IF EXISTS(
+		--	SELECT 1
+		--	  FROM edoc.UserIncomingDoc uid
+		--	WHERE uid.Status = 0
+		--		AND uid.UserReceive = @UserId
+		--		AND uid.IncomingDocId = @IncomingDocId
+		--		AND uid.SendType = 1
+		--)
+		--BEGIN
+		--	SELECT @UserIncomingDocId = MAX(uid.Id)
+		--	  FROM edoc.UserIncomingDoc uid
+		--	WHERE uid.Status = 0
+		--		AND uid.UserReceive = @UserId
+		--		AND uid.IncomingDocId = @IncomingDocId
+		--		AND uid.SendType = 1
+				
+		--	IF EXISTS(
+		--		SELECT 1
+		--		  FROM edoc.UserIncomingDoc uid
+		--		WHERE uid.Id = @UserIncomingDocId
+		--			AND uid.ReadDate IS NULL
+		--	)
+		--	BEGIN
+		--		UPDATE edoc.UserIncomingDoc
+		--		   SET ReadDate = @current_date
+		--		 WHERE Id = @UserIncomingDocId
+		--	END
+		--	ELSE
+		--	BEGIN
+		--		UPDATE edoc.UserIncomingDoc
+		--		   SET UserReceive = @UserId
+		--		 WHERE Id = @UserIncomingDocId
+		--	END
+		--END
+		--ELSE
+		--BEGIN
+		--	INSERT INTO edoc.UserIncomingDoc
+		--			   (IncomingDocId
+		--			   ,UserReceive
+		--			   ,ReadDate
+		--			   ,Status)
+		--		 VALUES
+		--			   (@IncomingDocId
+		--			   ,@UserId
+		--			   ,@current_date
+		--			   ,0)
+
+		--	IF EXISTS (
+		--		SELECT 1
+		--		  FROM dbo.Staff s
+		--		WHERE s.Id = @UserId
+		--			AND s.IsRepresentDepartment = 1
+		--	) BEGIN
+		--		SELECT @DepartmentId = s.DepartmentId
+		--		  FROM dbo.Staff s
+		--		WHERE s.Id = @UserId
+		--			AND s.IsRepresentDepartment = 1
+					
+		--		--
+		--		UPDATE edoc.UserIncomingDoc
+		--		   SET ReadDate = @UserId
+		--		 WHERE UserReceive = @DepartmentId
+		--			AND ReadDate IS NULL
+		--			AND SendType = 2
+		--	END
+			
+		--	IF EXISTS (
+		--		SELECT 1
+		--		  FROM dbo.Staff s
+		--		WHERE s.Id = @UserId
+		--			AND s.IsRepresentUnit = 1
+		--	) OR EXISTS (
+		--		SELECT 1 
+		--		  FROM dbo.Action a
+		--		INNER JOIN dbo.ActionOfRole aor ON aor.ActionId = a.Id
+		--		INNER JOIN dbo.RoleOfStaff ros ON ros.RoleId = aor.RoleId
+		--		WHERE ros.StaffId = @UserId
+		--			AND a.Code = '2018000460'
+		--	) BEGIN
+		--		--
+		--		UPDATE edoc.UserIncomingDoc
+		--		   SET ReadDate = @UserId
+		--		 WHERE UserReceive = @AllowDepartmentId
+		--			AND ReadDate IS NULL
+		--			AND SendType = 2
+		--	END
+		--END
+		
+		----
+		--SELECT @PreviousIncomingDocId = ISNULL(id.PreviousIncomingDocId, 0)
+		--  FROM edoc.IncomingDoc id
+		--WHERE id.Id = @IncomingDocId
+
+		--IF (@PreviousIncomingDocId > 0)
+		--BEGIN
+		--	IF EXISTS (
+		--		SELECT 1
+		--		  FROM edoc.UserIncomingDoc uid
+		--		WHERE uid.Status = 0
+		--			AND uid.UserReceive = @AllowDepartmentId
+		--			AND uid.IncomingDocId = @PreviousIncomingDocId
+		--			AND uid.SendType = 2
+		--	) BEGIN
+		--		SELECT @UserPreviousIncomingDocId = MAX(uid.Id)
+		--		  FROM edoc.UserIncomingDoc uid
+		--		WHERE uid.Status = 0
+		--			AND uid.UserReceive = @AllowDepartmentId
+		--			AND uid.IncomingDocId = @PreviousIncomingDocId
+		--			AND uid.SendType = 2
+					
+		--		IF EXISTS (
+		--			SELECT 1
+		--			  FROM edoc.UserIncomingDoc uid
+		--			WHERE uid.Id = @UserPreviousIncomingDocId
+		--				AND uid.ReadDate IS NULL
+		--		) BEGIN
+		--			UPDATE edoc.UserIncomingDoc
+		--			   SET ReadDate = GETDATE()
+		--			 WHERE Id = @UserPreviousIncomingDocId
+		--		END
+		--	END
+		--END
+
+		/*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage		nvarchar(MAX),
+				@ErrorNumber		int,
+				@ErrorSeverity		int,
+				@ErrorState			int,
+				@ErrorLine			int,
+				@ErrorProcedure		nvarchar(200);
+
+		-- Assign variables to error-handling functions that capture information for RAISERROR.
+		SELECT @ErrorNumber		= ERROR_NUMBER(),
+            @ErrorSeverity		= ERROR_SEVERITY(),
+            @ErrorState			= ERROR_STATE(),
+            @ErrorLine			= ERROR_LINE(),
+            @ErrorProcedure		= ISNULL(ERROR_PROCEDURE(), '-');
+	   
+		-- Build the message string that will contain original error information.
+		SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+	   
+		-- Only set the error state if its been set to zero
+		IF (@ErrorState = 0) SET @ErrorState = 1
+	   
+		-- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+		RAISERROR (@ErrorMessage,
+				@ErrorSeverity,
+				@ErrorState,
+				@ErrorNumber,		-- parameter: original error number.
+				@ErrorSeverity,		-- parameter: original error severity.
+				@ErrorState,		-- parameter: original error state.
+				@ErrorProcedure,	-- parameter: original error procedure name.
+				@ErrorLine			-- parameter: original error line number.
+			);
+    END CATCH
+
+    --SET NOCOUNT OFF;
+END
+
+
+
