@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/21/2025 6:33:32 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/22/2025 2:42:15 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -43,7 +43,8 @@ BEGIN
 				@ReceiveRoleId INT,
 				@ReceiveRoleName NVARCHAR(MAX),
 				@ReceiveRoleUnitId INT,
-				@ReceiveRoleUnitName NVARCHAR(MAX);
+				@ReceiveRoleUnitName NVARCHAR(MAX),
+				@ReadDate DATETIME;
 
         /*******************************************************************************
 		* Add SQL statement(s) here.
@@ -90,11 +91,14 @@ BEGIN
 		END
 
 		-- Kiểm tra xem đã nhận hay chưa
-		SET @UserIncomingDocId = (
-			SELECT TOP 1 Id
-			FROM edoc.UserIncomingDoc
-			WHERE IncomingDocId = @IncomingDocId AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
-		);
+		SET @ReadDate = NULL;
+		SET @UserIncomingDocId = NULL;
+
+		SELECT TOP 1 
+			@UserIncomingDocId = Id, 
+			@ReadDate = ReadDate
+		FROM edoc.UserIncomingDoc
+		WHERE IncomingDocId = @IncomingDocId AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
 		
 		-- Nếu đã nhận thì ghi lịch sử
 		IF @UserIncomingDocId IS NOT NULL
@@ -132,17 +136,42 @@ BEGIN
 			END
 			ELSE
 			BEGIN
-				UPDATE edoc.OpinionIncomingDoc 
-				SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
-				WHERE Id = @OpinionIncomingDocId
+				IF @OpinionStatus = 6
+				BEGIN
+					IF @ReadDate IS NULL -- Chưa đọc
+					BEGIN
+						UPDATE edoc.OpinionIncomingDoc 
+						SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+						WHERE Id = @OpinionIncomingDocId
+					END
+				END
+				ELSE
+				BEGIN
+					UPDATE edoc.OpinionIncomingDoc 
+					SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+					WHERE Id = @OpinionIncomingDocId
+				END
 			END
 
 			IF @UserIncomingDocStatus IS NOT NULL
 			BEGIN
-				UPDATE edoc.UserIncomingDoc 
-				SET 
-					Status = @UserIncomingDocStatus
-				WHERE Id = @UserIncomingDocId
+				IF @OpinionStatus = 6
+				BEGIN
+					IF @ReadDate IS NULL -- Chưa đọc
+					BEGIN
+						UPDATE edoc.UserIncomingDoc 
+						SET 
+							Status = @UserIncomingDocStatus
+						WHERE Id = @UserIncomingDocId
+					END
+				END
+				ELSE
+				BEGIN
+					UPDATE edoc.UserIncomingDoc 
+					SET 
+						Status = @UserIncomingDocStatus
+					WHERE Id = @UserIncomingDocId
+				END
 			END
 
 			IF @UserIncomingDocStatus = 9 -- Hoàn thành
@@ -153,7 +182,7 @@ BEGIN
 				WHERE Id = @UserIncomingDocId
 			END
 
-			IF @OpinionStatus = 6 -- Đã đọc
+			IF @OpinionStatus = 6 AND @ReadDate IS NULL -- Chưa đọc
 			BEGIN
 				UPDATE edoc.UserIncomingDoc 
 				SET 
@@ -215,7 +244,7 @@ BEGIN
 					ReceiveRoleId,
 					ReceiveRoleUnitName,
 					SendDate,
-					--ReadDate,
+					ReadDate,
 					ExpiredDate,
 					--CompleteDate,
 					Status,
@@ -238,7 +267,7 @@ BEGIN
 					@ReceiveRoleId,
 					@ReceiveRoleUnitName,
 					@current_date,
-					--@ReadDate,
+					IIF(@OpinionStatus = 0, @current_date, null),
 					@ExpiredDate,
 					--@CompleteDate,
 					@TransferUserIncomingDocStatus,
