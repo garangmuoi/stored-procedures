@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 9/22/2025 10:42:20 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -12,7 +12,8 @@ GO
 -- Description: Thu hồi văn bản
 -- =============================================
 ALTER PROCEDURE [edoc].[Prc_UserIncomingDoc_Recall]
-    @UserIncomingDocs XML = NULL
+    @UserIncomingDocs XML = NULL,
+    @Opinion NVARCHAR(MAX)
 AS
 BEGIN
     BEGIN TRY
@@ -55,7 +56,9 @@ BEGIN
 
             UPDATE edoc.UserIncomingDoc SET Status = 4 WHERE Id = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
 
-            UPDATE edoc.OpinionIncomingDoc SET Status = 4 WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
+            UPDATE edoc.OpinionIncomingDoc SET Status = 4, Opinion = @Opinion WHERE 
+                IncomingDocId = @IncomingDocId 
+                AND UserIncomingDocId = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
 
             FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId;
 		END

@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]    Script Date: 9/21/2025 2:46:31 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_GetUserIncomingDocTransferNotRead]    Script Date: 9/22/2025 10:41:31 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -52,7 +52,7 @@ BEGIN
     FROM edoc.UserIncomingDoc u WITH (NOLOCK)
     LEFT JOIN dbo.Role r on u.ReceiveRoleId = r.Id
     WHERE 
-        u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs) AND u.Status = 1
+        u.IncomingDocId IN (SELECT Id FROM CTE_IncomingDocs)
     ORDER BY u.Id;
 
     END TRY
