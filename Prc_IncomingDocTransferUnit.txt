@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/21/2025 2:22:18 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/23/2025 2:52:49 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -14,7 +14,7 @@ GO
 ALTER PROCEDURE [edoc].[Prc_IncomingDocTransferUnit]
     @Id BIGINT,  -- IncomingDocId gốc
     @RoleId INT, -- RoleId lưu vào UserIncomingDoc
-    @UserId INT,  -- UserId người thực hiện chuyển
+    @UserId INT, -- UserId người thực hiện chuyển
     @Status INT = NULL
 AS
 BEGIN
@@ -86,7 +86,7 @@ BEGIN
 
         IF NOT EXISTS (SELECT 1 FROM #UnitIds)
         BEGIN
-            SELECT  CAST(0 AS bit) AS Success,
+            SELECT CAST(0 AS BIT) AS Success,
                    N'Không có đơn vị nhận' AS Message;
             RETURN;
         END;
@@ -195,6 +195,12 @@ BEGIN
                     LanguageId,
                     PageCount,
                     PositionName,
+                    LeaderRecipientSuggest,
+                    LeaderRecipientSuggestIds,
+                    DraftUnitName,
+                    MeetingStartDate,
+                    MeetingEndDate,
+                    MeetingMaster,
                     Status,
                     ParentId
                 )
@@ -258,6 +264,12 @@ BEGIN
                        LanguageId,
                        PageCount,
                        PositionName,
+                       LeaderRecipientSuggest,
+                       LeaderRecipientSuggestIds,
+                       DraftUnitName,
+                       MeetingStartDate,
+                       MeetingEndDate,
+                       MeetingMaster,
                        0,             -- Status = 0
                        @Id            -- ParentId = Id văn bản cũ
                 FROM edoc.IncomingDoc WITH (NOLOCK)
@@ -266,17 +278,18 @@ BEGIN
                 -- Get new IncomingDocId
                 SET @NewIncomingDocId = SCOPE_IDENTITY();
 
-				-- Insert attach incoming doc add new
+                -- Insert attach incoming doc add new
                 INSERT INTO edoc.AttachmentIncomingDoc (IncomingDocId, FileName, FileDescription, FilePath, Extension, Status, CreatedUserId, CreatedDate)
                 SELECT @NewIncomingDocId,
-                   aid.FileName,
-                   aid.FileDescription,
-                   aid.FilePath,
-                   aid.Extension,
-                   1,
-                   @UserId,
-                   @current_date
-                FROM edoc.AttachmentIncomingDoc aid WHERE aid.IncomingDocId = @Id
+                       aid.FileName,
+                       aid.FileDescription,
+                       aid.FilePath,
+                       aid.Extension,
+                       1,
+                       @UserId,
+                       @current_date
+                FROM edoc.AttachmentIncomingDoc aid
+                WHERE aid.IncomingDocId = @Id;
                 -- Capture the newly inserted Id
                 ---- Thêm bản ghi UserIncomingDoc cho bản clone
                 --INSERT INTO edoc.UserIncomingDoc (IncomingDocId, UserSend, UserReceive, [ProsessRoleId], SendDate, Status, SendType, UserSendRoleId)
@@ -292,106 +305,99 @@ BEGIN
 
                 -- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
                 SET @ReceiveRoleId = NULL;
-			    SET @ReceiveRoleName = NULL;
+                SET @ReceiveRoleName = NULL;
 
-                SELECT TOP 1 
-				    @ReceiveRoleId = Id,
-				    @ReceiveRoleName = Name
-			    FROM dbo.Role
-			    WHERE UnitId = @UnitId 
-				AND Code = 'VanThuDonVi';
+                SELECT TOP 1
+                       @ReceiveRoleId = Id,
+                       @ReceiveRoleName = Name
+                FROM dbo.Role
+                WHERE UnitId = @UnitId
+                      AND Code = 'VanThuDonVi';
 
                 -- Kiểm tra xem đã gửi hay chưa
-			    SET @UserIncomingDocId = (
-				    SELECT TOP 1 Id
-				    FROM edoc.UserIncomingDoc
-				    WHERE IncomingDocId = @NewIncomingDocId AND ReceiveRoleId = @ReceiveRoleId
-			    );
+                SET @UserIncomingDocId =
+                (
+                    SELECT TOP 1
+                           Id
+                    FROM edoc.UserIncomingDoc
+                    WHERE IncomingDocId = @NewIncomingDocId
+                          AND ReceiveRoleId = @ReceiveRoleId
+                );
 
                 IF @UserIncomingDocId IS NULL
                 BEGIN
                     -- Tạo mới lịch sử cho role đó
-				    INSERT INTO edoc.UserIncomingDoc
-				    (
-					    IncomingDocId,
-					    UserSend,
-					    UserSendName,
-					    UserSendRoleId,
-					    --UserReceive,
-					    UserReceiveName,
-					    --UserReceiveRoleId,
-					    ReceiveRoleId,
-					    ReceiveRoleUnitName,
-					    SendDate,
-					    --ReadDate,
-					    --ExpiredDate,
-					    --CompleteDate,
-					    Status,
-					    SendType
-					    --ProsessRoleId,
-					    --UserSendStatus,
-					    --UserReceiveStatus
-					    --Note,
-					    --ProsessNote
-				    )
-				    VALUES
-				    (
-					    @NewIncomingDocId,
-					    @UserId,
-					    (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
-					    @RoleId,
-					    --@UserReceive,
-					    @ReceiveRoleName,
-					    --@UserReceiveRoleId,
-					    @ReceiveRoleId,
-					    @Name,
-					    @current_date,
-					    --@ReadDate,
-					    --@ExpiredDate,
-					    --@CompleteDate,
-					    1, -- Status = 1 Chưa xử lý
-					    2 -- SendType = 2 (chuyển đơn vị)
-					    --@ProsessRoleId,
-					    --@UserSendStatus,
-					    --@IncomingDocStatus
-					    --@Note,
-					    --@ProsessNote
-				    );
-				
-				    SET @UserIncomingDocId = SCOPE_IDENTITY();
-                END
+                    INSERT INTO edoc.UserIncomingDoc
+                    (
+                        IncomingDocId,
+                        UserSend,
+                        UserSendName,
+                        UserSendRoleId,
+                        --UserReceive,
+                        UserReceiveName,
+                        --UserReceiveRoleId,
+                        ReceiveRoleId,
+                        ReceiveRoleUnitName,
+                        SendDate,
+                        --ReadDate,
+                        --ExpiredDate,
+                        --CompleteDate,
+                        Status,
+                        SendType
+                    --ProsessRoleId,
+                    --UserSendStatus,
+                    --UserReceiveStatus
+                    --Note,
+                    --ProsessNote
+                    )
+                    VALUES
+                    (   @NewIncomingDocId, @UserId,
+                        (SELECT CONCAT(FirstName, ' ', LastName)FROM dbo.Staff WHERE Id = @UserId), @RoleId,
+                           --@UserReceive,
+                        @ReceiveRoleName,
+                           --@UserReceiveRoleId,
+                        @ReceiveRoleId, @Name, @current_date,
+                           --@ReadDate,
+                           --@ExpiredDate,
+                           --@CompleteDate,
+                        1, -- Status = 1 Chưa xử lý
+                        2  -- SendType = 2 (chuyển đơn vị)
+                        --@ProsessRoleId,
+                        --@UserSendStatus,
+                        --@IncomingDocStatus
+                        --@Note,
+                        --@ProsessNote
+                        );
+
+                    SET @UserIncomingDocId = SCOPE_IDENTITY();
+                END;
 
                 -- Tạo mới lịch sử chi tiết
-			    INSERT INTO edoc.OpinionIncomingDoc
-			    (
-				    IncomingDocId,
-				    UserIncomingDocId,
-				    OpinionUserId,
-				    OpinionUserRoleId,
-				    Opinion,
-				    Status,
-				    OpinionDate,
-				    OpinionType
-			    )
-			    VALUES
-			    (
-				    @NewIncomingDocId, 
-				    @UserIncomingDocId, 
-				    @UserId, 
-				    @RoleId, 
-				    N'Chuyển văn bản đến ' + @Name, 
-				    0, -- Khởi tạo
-				    @current_date, 
-				    2 -- Lịch sử chuyển
-			    );
+                INSERT INTO edoc.OpinionIncomingDoc
+                (
+                    IncomingDocId,
+                    UserIncomingDocId,
+                    OpinionUserId,
+                    OpinionUserRoleId,
+                    Opinion,
+                    Status,
+                    OpinionDate,
+                    OpinionType
+                )
+                VALUES
+                (   @NewIncomingDocId, @UserIncomingDocId, @UserId, @RoleId, N'Chuyển văn bản đến ' + @Name,
+                    0,               -- Khởi tạo
+                    @current_date, 2 -- Lịch sử chuyển
+                    );
 
                 FETCH NEXT FROM c_UnitIds
-                INTO @UnitId, @Name;
+                INTO @UnitId,
+                     @Name;
             END;
 
             CLOSE c_UnitIds;
             DEALLOCATE c_UnitIds;
-            SELECT CAST(1 AS bit) AS Success,
+            SELECT CAST(1 AS BIT) AS Success,
                    N'Chuyển thành công' AS Message;
         END;
 
