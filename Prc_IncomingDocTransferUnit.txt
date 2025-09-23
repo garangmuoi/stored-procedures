@@ -1,5 +1,3 @@
-USE [DHTN-2025]
-GO
 /****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/23/2025 2:52:49 PM ******/
 SET ANSI_NULLS ON
 GO
@@ -37,19 +35,20 @@ BEGIN
                 @OriginalStatus INT,
                 @UserIncomingDocId BIGINT,
                 @ReceiveRoleId INT,
-                @ReceiveRoleName NVARCHAR(MAX);
+                @ReceiveRoleName NVARCHAR(MAX),
+                @ProsessRoleId INT; -- Added for ProsessRoleId
 
         /*******************************************************************************
 		* Add SQL statment(s) here.
 		* Build up some dynamic SQL to do the search
 		*******************************************************************************/
 
-        -- Temp table to store unique UnitIds
+        -- Temp table to store unique UnitIds with ProsessRoleId
         IF OBJECT_ID('tempdb..#UnitIds') IS NOT NULL
             DROP TABLE #UnitIds;
-        CREATE TABLE #UnitIds (UnitId INT, Name NVARCHAR(255));
+        CREATE TABLE #UnitIds (UnitId INT, Name NVARCHAR(255), ProsessRoleId INT);
 
-        -- Lấy mã đơn vị từ văn bản gốc
+        -- Lấy mã đơn vị từ văn bản gốc và gán ProsessRoleId
         DECLARE @PresideRecipientCode NVARCHAR(500),
                 @CoordinatedRecipientCode NVARCHAR(500);
         SELECT @PresideRecipientCode = ISNULL(PresideRecipientCode, N''),
@@ -59,19 +58,20 @@ BEGIN
 
         ;WITH Codes
         AS
-            (
-            SELECT LTRIM(RTRIM(Value)) AS Code
+        (
+            SELECT LTRIM(RTRIM(Value)) AS Code, 1 AS ProsessRoleId
             FROM dbo.fn_SplitString(REPLACE(@PresideRecipientCode, N' ', N''), ',')
             WHERE ISNULL(Value, '') <> ''
             UNION ALL
-            SELECT LTRIM(RTRIM(Value)) AS Code
+            SELECT LTRIM(RTRIM(Value)) AS Code, 2 AS ProsessRoleId
             FROM dbo.fn_SplitString(REPLACE(@CoordinatedRecipientCode, N' ', N''), ',')
             WHERE ISNULL(Value, '') <> ''
-            )
-        INSERT INTO #UnitIds (UnitId, Name)
+        )
+        INSERT INTO #UnitIds (UnitId, Name, ProsessRoleId)
         SELECT DISTINCT
                d.Id,
-               d.Name
+               d.Name,
+               c.ProsessRoleId
         FROM Codes c
             JOIN dbo.Department d WITH (NOLOCK)
                 ON d.Code = c.Code;
@@ -83,7 +83,6 @@ BEGIN
         WHERE Id = @Id;
 
         -- Update original document status to 10
-
         IF NOT EXISTS (SELECT 1 FROM #UnitIds)
         BEGIN
             SELECT CAST(0 AS BIT) AS Success,
@@ -99,37 +98,17 @@ BEGIN
             WHERE Id = @Id;
 
             -- Process each unique UnitId
-            DECLARE c_UnitIds CURSOR FOR SELECT UnitId, Name FROM #UnitIds;
+            DECLARE c_UnitIds CURSOR FOR SELECT UnitId, Name, ProsessRoleId FROM #UnitIds;
 
             OPEN c_UnitIds;
 
             FETCH NEXT FROM c_UnitIds
             INTO @UnitId,
-                 @Name;
+                 @Name,
+                 @ProsessRoleId;
 
             WHILE @@FETCH_STATUS = 0
             BEGIN
-                -- Get document book for the unit
-                --SELECT @DocBookId = db.Id
-                --  FROM edoc.DocBook WITH (NOLOCK) db
-                -- WHERE db.TypeId = 1
-                --   AND db.UnitId = @UnitId
-                --   AND db.IsDefault = 1
-                --   AND db.IsDelete = 0;
-
-                ---- Get next number for the unit (if DocBook exists)
-                --IF @DocBookId IS NOT NULL
-                --BEGIN
-                --    SELECT @Number = (ISNULL(MAX(id.Number), 0) + 1)
-                --      FROM edoc.IncomingDoc id
-                --     WHERE YEAR(id.ReceivedDate) = YEAR(GETDATE())
-                --       AND id.DocBookId = @DocBookId
-                --       AND id.UnitId = @UnitId;
-                --END
-                --ELSE
-                --BEGIN
-                --    SET @Number = NULL;
-                --END;
                 SET @Number = NULL;
 
                 -- Clone new IncomingDoc record
@@ -290,19 +269,7 @@ BEGIN
                        @current_date
                 FROM edoc.AttachmentIncomingDoc aid
                 WHERE aid.IncomingDocId = @Id;
-                -- Capture the newly inserted Id
-                ---- Thêm bản ghi UserIncomingDoc cho bản clone
-                --INSERT INTO edoc.UserIncomingDoc (IncomingDocId, UserSend, UserReceive, [ProsessRoleId], SendDate, Status, SendType, UserSendRoleId)
-                --VALUES
-                --(   @NewIncomingDocId, @UserId, @UserId, -- UserReceive = UserId theo yêu cầu
-                --    1, @current_date, 0, 2,              -- SendType = 2 (chuyển đơn vị)
-                --    @RoleId);
-
-                -- Insert opinion history
-                --INSERT INTO edoc.OpinionIncomingDoc (IncomingDocId, OpinionUserId, Opinion, OpinionDate, Status, OpinionUserRoleId)
-                --VALUES
-                --(@NewIncomingDocId, @UserId, N'Chuyển văn bản đến:' + @Name, @current_date, 1, @RoleId);
-
+				
                 -- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
                 SET @ReceiveRoleId = NULL;
                 SET @ReceiveRoleName = NULL;
@@ -333,41 +300,27 @@ BEGIN
                         UserSend,
                         UserSendName,
                         UserSendRoleId,
-                        --UserReceive,
                         UserReceiveName,
-                        --UserReceiveRoleId,
                         ReceiveRoleId,
                         ReceiveRoleUnitName,
                         SendDate,
-                        --ReadDate,
-                        --ExpiredDate,
-                        --CompleteDate,
                         Status,
-                        SendType
-                    --ProsessRoleId,
-                    --UserSendStatus,
-                    --UserReceiveStatus
-                    --Note,
-                    --ProsessNote
+                        SendType,
+                        ProsessRoleId
                     )
                     VALUES
-                    (   @NewIncomingDocId, @UserId,
-                        (SELECT CONCAT(FirstName, ' ', LastName)FROM dbo.Staff WHERE Id = @UserId), @RoleId,
-                           --@UserReceive,
+                    (   @NewIncomingDocId, 
+                        @UserId,
+                        (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId), 
+                        @RoleId,
                         @ReceiveRoleName,
-                           --@UserReceiveRoleId,
-                        @ReceiveRoleId, @Name, @current_date,
-                           --@ReadDate,
-                           --@ExpiredDate,
-                           --@CompleteDate,
+                        @ReceiveRoleId, 
+                        @Name, 
+                        @current_date,
                         1, -- Status = 1 Chưa xử lý
-                        2  -- SendType = 2 (chuyển đơn vị)
-                        --@ProsessRoleId,
-                        --@UserSendStatus,
-                        --@IncomingDocStatus
-                        --@Note,
-                        --@ProsessNote
-                        );
+                        2, -- SendType = 2 (chuyển đơn vị)
+                        @ProsessRoleId
+                    );
 
                     SET @UserIncomingDocId = SCOPE_IDENTITY();
                 END;
@@ -385,14 +338,20 @@ BEGIN
                     OpinionType
                 )
                 VALUES
-                (   @NewIncomingDocId, @UserIncomingDocId, @UserId, @RoleId, N'Chuyển văn bản đến ' + @Name,
+                (   @NewIncomingDocId, 
+                    @UserIncomingDocId, 
+                    @UserId, 
+                    @RoleId, 
+                    N'Chuyển văn bản đến ' + @Name,
                     0,               -- Khởi tạo
-                    @current_date, 2 -- Lịch sử chuyển
-                    );
+                    @current_date, 
+                    2                -- Lịch sử chuyển
+                );
 
                 FETCH NEXT FROM c_UnitIds
                 INTO @UnitId,
-                     @Name;
+                     @Name,
+                     @ProsessRoleId;
             END;
 
             CLOSE c_UnitIds;

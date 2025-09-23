@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/22/2025 2:42:15 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/23/2025 2:39:28 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -28,7 +28,8 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessNew]
 	@TransferRoleCode NVARCHAR(MAX) = NULL, -- Gửi cho vai trò
 	@Recipients XML = NULL, --Gửi cho cá nhân
 	@ExpiredDate DATETIME = NULL,
-	@DocBookId INT = NULL
+	@DocBookId INT = NULL,
+	@ProsessRoleId INT = NULL
 AS
 BEGIN
     BEGIN TRY
@@ -249,7 +250,7 @@ BEGIN
 					--CompleteDate,
 					Status,
 					SendType,
-					--ProsessRoleId,
+					ProsessRoleId,
 					UserSendStatus,
 					UserReceiveStatus
 					--Note,
@@ -272,7 +273,7 @@ BEGIN
 					--@CompleteDate,
 					@TransferUserIncomingDocStatus,
 					@SendType,
-					--@ProsessRoleId,
+					@ProsessRoleId,
 					@UserSendStatus,
 					@IncomingDocStatus
 					--@Note,
