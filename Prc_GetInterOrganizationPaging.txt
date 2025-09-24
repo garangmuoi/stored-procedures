@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging]    Script Date: 9/15/2025 4:26:39 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging]    Script Date: 9/24/2025 4:24:34 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -18,12 +18,23 @@ BEGIN
 
     -- Tạo bảng tạm vật lý
     CREATE TABLE #OrgTypeTable (OrgType INT);
+       CREATE TABLE #SearchIds (OrganID NVARCHAR(250));
+
 
     IF @OrgType IS NOT NULL AND @OrgType <> '-1000'
     BEGIN
         INSERT INTO #OrgTypeTable (OrgType)
         SELECT CAST(value AS INT)
         FROM dbo.SplitString(@OrgType, ',');
+    END
+    
+    -- Nếu OrgType = -1000 thì split SearchText để lấy danh sách OrganID
+    IF @OrgType = '-1000' AND @SearchText IS NOT NULL
+    BEGIN
+        INSERT INTO #SearchIds (OrganID)
+        SELECT LTRIM(RTRIM(value))
+        FROM dbo.SplitString(@SearchText, ',')
+        WHERE LTRIM(RTRIM(value)) <> '';
     END
 
     -- Đếm tổng số dòng
@@ -32,7 +43,7 @@ BEGIN
     WHERE 
         IsDeleted = 0
         AND (
-            (@OrgType = '-1000' AND OrganID = @SearchText)
+            (@OrgType = '-1000' AND OrganID IN (SELECT OrganID FROM #SearchIds))
             OR
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
@@ -45,26 +56,26 @@ BEGIN
     -- Lấy dữ liệu phân trang
     SELECT
         OrganID,
-        OrganizationIncharge,
+        --OrganizationIncharge,
         OrganName,
-        OrganAdd,
-        Email,
-        Telephone,
-        Fax,
-        Website,
-        Password,
-        ID_DONVI,
-        ParentId,
-        CAPCQ,
-        ProvinceId,
-        OrganTypeId,
-        OrganizationInChargeId,
-        Status,
-        OrgType,
-        FastTypeCode,
-        IsDeleted,
+        --OrganAdd,
+        --Email,
+        --Telephone,
+        --Fax,
+        --Website,
+        --Password,
+        --ID_DONVI,
+        --ParentId,
+        --CAPCQ,
+        --ProvinceId,
+        --OrganTypeId,
+        --OrganizationInChargeId,
+        --Status,
+        --OrgType,
+        --FastTypeCode,
+        --IsDeleted,
         InOrder,
-        IsDigitalOption,
+        --IsDigitalOption,
         @PageNumber AS PageNumber,
         @PageSize AS PageSize,
         CEILING(CAST(@TotalRowCount AS DECIMAL) / @PageSize) AS Total
@@ -72,7 +83,7 @@ BEGIN
     WHERE 
         IsDeleted = 0
         AND (
-            (@OrgType = '-1000' AND OrganID = @SearchText)
+            (@OrgType = '-1000' AND OrganID IN (SELECT OrganID FROM #SearchIds))
             OR
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
@@ -88,4 +99,5 @@ BEGIN
     FETCH NEXT @PageSize ROWS ONLY;
 
     DROP TABLE #OrgTypeTable;
+   DROP TABLE #SearchIds;
 END
