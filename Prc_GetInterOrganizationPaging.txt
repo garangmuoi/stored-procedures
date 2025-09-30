@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging]    Script Date: 9/24/2025 4:24:34 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging]    Script Date: 09/30/2025 10:04:38 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -18,7 +18,7 @@ BEGIN
 
     -- Tạo bảng tạm vật lý
     CREATE TABLE #OrgTypeTable (OrgType INT);
-       CREATE TABLE #SearchIds (OrganID NVARCHAR(250));
+    CREATE TABLE #SearchIds (OrganID NVARCHAR(250));
 
 
     IF @OrgType IS NOT NULL AND @OrgType <> '-1000'
@@ -47,8 +47,25 @@ BEGIN
             OR
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
-                 OrganName LIKE '%' + @SearchText + '%' OR 
-                 FastTypeCode LIKE '%' + @SearchText + '%')
+                (
+                    OrganName = @SearchText
+                    OR OrganName LIKE @SearchText + ' %'
+                    OR OrganName LIKE '% ' + @SearchText
+                    OR OrganName LIKE '% ' + @SearchText + ' %'
+                ) OR
+                (
+                    OrganAdd = @SearchText
+                    OR OrganAdd LIKE @SearchText + ' %'
+                    OR OrganAdd LIKE '% ' + @SearchText
+                    OR OrganAdd LIKE '% ' + @SearchText + ' %'
+                ) OR
+                (
+                    FastTypeCode = @SearchText
+                    OR FastTypeCode LIKE @SearchText + ' %'
+                    OR FastTypeCode LIKE '% ' + @SearchText
+                    OR FastTypeCode LIKE '% ' + @SearchText + ' %'
+                )
+                )
                 AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
             )
         );
@@ -58,7 +75,7 @@ BEGIN
         OrganID,
         --OrganizationIncharge,
         OrganName,
-        --OrganAdd,
+        OrganAdd,
         --Email,
         --Telephone,
         --Fax,
@@ -87,17 +104,34 @@ BEGIN
             OR
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
-                 OrganName LIKE '%' + @SearchText + '%' OR 
-                 FastTypeCode LIKE '%' + @SearchText + '%')
+                (
+                    OrganName = @SearchText
+                    OR OrganName LIKE @SearchText + ' %'
+                    OR OrganName LIKE '% ' + @SearchText
+                    OR OrganName LIKE '% ' + @SearchText + ' %'
+                ) OR
+                (
+                    OrganAdd = @SearchText
+                    OR OrganAdd LIKE @SearchText + ' %'
+                    OR OrganAdd LIKE '% ' + @SearchText
+                    OR OrganAdd LIKE '% ' + @SearchText + ' %'
+                ) OR
+                (
+                    FastTypeCode = @SearchText
+                    OR FastTypeCode LIKE @SearchText + ' %'
+                    OR FastTypeCode LIKE '% ' + @SearchText
+                    OR FastTypeCode LIKE '% ' + @SearchText + ' %'
+                )
+                )
                 AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
             )
         )
     ORDER BY 
-        InOrder DESC,
+        InOrder ASC,
         OrganID ASC
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 
     DROP TABLE #OrgTypeTable;
-   DROP TABLE #SearchIds;
+    DROP TABLE #SearchIds;
 END
