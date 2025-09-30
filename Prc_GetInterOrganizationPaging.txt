@@ -48,22 +48,16 @@ BEGIN
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
                 (
-                    OrganName = @SearchText
-                    OR OrganName LIKE @SearchText + ' %'
-                    OR OrganName LIKE '% ' + @SearchText
-                    OR OrganName LIKE '% ' + @SearchText + ' %'
+                    dbo.fRemoveDiacritics(OrganName) = dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE dbo.fRemoveDiacritics(@SearchText) + ' %'
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText) + ' %'
                 ) OR
                 (
-                    OrganAdd = @SearchText
-                    OR OrganAdd LIKE @SearchText + ' %'
-                    OR OrganAdd LIKE '% ' + @SearchText
-                    OR OrganAdd LIKE '% ' + @SearchText + ' %'
-                ) OR
-                (
-                    FastTypeCode = @SearchText
-                    OR FastTypeCode LIKE @SearchText + ' %'
-                    OR FastTypeCode LIKE '% ' + @SearchText
-                    OR FastTypeCode LIKE '% ' + @SearchText + ' %'
+                    dbo.fRemoveDiacritics(FastTypeCode) = dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE dbo.fRemoveDiacritics(@SearchText) + ' %'
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText) + ' %'
                 )
                 )
                 AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
@@ -73,26 +67,10 @@ BEGIN
     -- Lấy dữ liệu phân trang
     SELECT
         OrganID,
-        --OrganizationIncharge,
-        OrganName,
         OrganAdd,
-        --Email,
-        --Telephone,
-        --Fax,
-        --Website,
-        --Password,
-        --ID_DONVI,
-        --ParentId,
-        --CAPCQ,
-        --ProvinceId,
-        --OrganTypeId,
-        --OrganizationInChargeId,
-        --Status,
-        --OrgType,
-        --FastTypeCode,
-        --IsDeleted,
+        OrganName,
+        FastTypeCode,
         InOrder,
-        --IsDigitalOption,
         @PageNumber AS PageNumber,
         @PageSize AS PageSize,
         CEILING(CAST(@TotalRowCount AS DECIMAL) / @PageSize) AS Total
@@ -105,22 +83,16 @@ BEGIN
             (@OrgType <> '-1000' AND 
                 (@SearchText IS NULL OR 
                 (
-                    OrganName = @SearchText
-                    OR OrganName LIKE @SearchText + ' %'
-                    OR OrganName LIKE '% ' + @SearchText
-                    OR OrganName LIKE '% ' + @SearchText + ' %'
+                    dbo.fRemoveDiacritics(OrganName) = dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE dbo.fRemoveDiacritics(@SearchText) + ' %'
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(OrganName) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText) + ' %'
                 ) OR
                 (
-                    OrganAdd = @SearchText
-                    OR OrganAdd LIKE @SearchText + ' %'
-                    OR OrganAdd LIKE '% ' + @SearchText
-                    OR OrganAdd LIKE '% ' + @SearchText + ' %'
-                ) OR
-                (
-                    FastTypeCode = @SearchText
-                    OR FastTypeCode LIKE @SearchText + ' %'
-                    OR FastTypeCode LIKE '% ' + @SearchText
-                    OR FastTypeCode LIKE '% ' + @SearchText + ' %'
+                    dbo.fRemoveDiacritics(FastTypeCode) = dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE dbo.fRemoveDiacritics(@SearchText) + ' %'
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText)
+                    OR dbo.fRemoveDiacritics(FastTypeCode) LIKE '% ' + dbo.fRemoveDiacritics(@SearchText) + ' %'
                 )
                 )
                 AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
