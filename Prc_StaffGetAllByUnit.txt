@@ -6,13 +6,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-
-
-
-
-
-
-
 -- =============================================
 -- Author:		Long Nguyen
 -- Create date:	2016/4/28
@@ -47,7 +40,7 @@ BEGIN
         IF @UnitId IS NOT NULL
         BEGIN
             SELECT s.Id,
-                   s.DepartmentId,
+                   ros.DepartmentId,
                    d.Name AS DepartmentName,
                    s.UnitId,
                    s.Code,
@@ -60,8 +53,6 @@ BEGIN
                    r.Id AS RoleId,
                    r.Name AS RoleName
             FROM dbo.Staff (NOLOCK) s
-                LEFT JOIN dbo.Department (NOLOCK) d
-                    ON d.Id = s.DepartmentId
                 LEFT JOIN dbo.Position (NOLOCK) p
                     ON p.Id = s.PositionId
                 LEFT JOIN dbo.RoleOfStaff (NOLOCK) ros
@@ -69,6 +60,8 @@ BEGIN
                 JOIN dbo.Role (NOLOCK) r
                     ON r.Id = ros.RoleId
                        AND s.UnitId = r.UnitId
+                LEFT JOIN dbo.Department (NOLOCK) d
+                    ON d.Id = ros.DepartmentId
             WHERE s.IsDeleted = 0
                 and (@RoleCode IS NULL OR 
                 (@RoleCode IS NOT NULL 
@@ -109,7 +102,7 @@ BEGIN
 
 
             SELECT s.[Id],
-                   s.[DepartmentId],
+                   ros.[DepartmentId],
                    d.Name AS DepartmentName,
                    s.[Code],
                    s.[FirstName],
@@ -122,8 +115,6 @@ BEGIN
                    r.Id AS RoleId,
                    r.Name AS RoleName
             FROM [dbo].[Staff] s
-                LEFT JOIN dbo.Department d
-                    ON d.Id = s.DepartmentId
                 LEFT JOIN dbo.Position p
                     ON p.Id = s.PositionId
                 LEFT JOIN dbo.RoleOfStaff (NOLOCK) ros
@@ -131,6 +122,8 @@ BEGIN
                 JOIN dbo.Role (NOLOCK) r
                     ON r.Id = ros.RoleId
                        AND s.UnitId = r.UnitId
+                LEFT JOIN dbo.Department d
+                    ON d.Id = ros.DepartmentId
             WHERE s.[UnitId] IN ( SELECT Id FROM @tempID )
                   AND s.IsDeleted = 0
                   and (@RoleCode IS NULL OR 
@@ -187,30 +180,3 @@ BEGIN
     END CATCH;
     SET NOCOUNT OFF;
 END;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
