@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 9/22/2025 10:42:20 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 9/29/2025 11:35:41 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -12,6 +12,8 @@ GO
 -- Description: Thu hồi văn bản
 -- =============================================
 ALTER PROCEDURE [edoc].[Prc_UserIncomingDoc_Recall]
+    @UserId INT,
+    @RoleId INT,
     @UserIncomingDocs XML = NULL,
     @Opinion NVARCHAR(MAX)
 AS
@@ -21,6 +23,9 @@ BEGIN
         --
         -- All other declarations and initialisation
         --
+        DECLARE @current_date DATETIME = GETDATE(),
+                @OpinionIncomingDocId INT;
+
         -- Declare temp table to parse Recipients
 		IF OBJECT_ID('tempdb..#UserIncomingDocs') IS NOT NULL
 			DROP TABLE UserIncomingDocs;
@@ -56,9 +61,44 @@ BEGIN
 
             UPDATE edoc.UserIncomingDoc SET Status = 4 WHERE Id = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
 
-            UPDATE edoc.OpinionIncomingDoc SET Status = 4, Opinion = @Opinion WHERE 
-                IncomingDocId = @IncomingDocId 
-                AND UserIncomingDocId = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
+            --UPDATE edoc.OpinionIncomingDoc SET Status = 4, Opinion = @Opinion WHERE 
+            --    IncomingDocId = @IncomingDocId 
+            --    AND UserIncomingDocId = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
+
+            SET @OpinionIncomingDocId = NULL;
+            SELECT TOP 1 @OpinionIncomingDocId = o.Id FROM edoc.OpinionIncomingDoc as o 
+                WHERE o.IncomingDocId = @IncomingDocId 
+                    and o.UserIncomingDocId = @UserIncomingDocId
+                    and o.OpinionUserId = @UserId
+                    and o.OpinionUserRoleId = @RoleId
+                    and o.Status = 4
+                    and o.OpinionType = 2
+
+            IF (@OpinionIncomingDocId IS NULL)
+            BEGIN
+                INSERT INTO edoc.OpinionIncomingDoc
+			    (
+				    IncomingDocId,
+				    UserIncomingDocId,
+				    OpinionUserId,
+				    OpinionUserRoleId,
+				    Opinion,
+				    Status,
+				    OpinionDate,
+				    OpinionType
+			    )
+			    VALUES
+			    (
+				    @IncomingDocId, 
+				    @UserIncomingDocId, 
+				    @UserId, 
+				    @RoleId, 
+				    @Opinion, 
+				    4,  -- Status = 4 Bị Thu Hồi
+				    @current_date, 
+				    2   -- Lịch sử
+			    );
+            END
 
             FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId;
 		END

@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 9/23/2025 2:39:28 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 10/6/2025 10:12:01 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -50,7 +50,6 @@ BEGIN
         /*******************************************************************************
 		* Add SQL statement(s) here.
 		*******************************************************************************/
-		
 		-- Lấy IncomingDoc Status hiện tại
 		SET @UserSendStatus = (
 			SELECT TOP 1 Status
@@ -72,12 +71,26 @@ BEGIN
 		-- Cập nhật IncomingDoc Status
         IF @IncomingDocStatus IS NOT NULL
 		BEGIN
-			-- Update the IncomingDoc status
-			UPDATE edoc.IncomingDoc
-			SET Status = @IncomingDocStatus,
-				ModifiedUserId = @UserId,
-				ModifiedDate = @current_date
-			WHERE Id = @IncomingDocId;
+			IF @IncomingDocStatus = 101 -- Kết thúc và chuyển đơn vị
+			BEGIN
+				-- Update the IncomingDoc status
+				UPDATE edoc.IncomingDoc
+				SET Status = @IncomingDocStatus,
+					ModifiedUserId = @UserId,
+					ModifiedDate = @current_date,
+					Approved = 1,
+					Approver = (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId)
+				WHERE Id = @IncomingDocId;
+			END
+			ELSE
+			BEGIN
+				-- Update the IncomingDoc status
+				UPDATE edoc.IncomingDoc
+				SET Status = @IncomingDocStatus,
+					ModifiedUserId = @UserId,
+					ModifiedDate = @current_date
+				WHERE Id = @IncomingDocId;
+			END
 		END
 
 		-- Cập nhật IncomingDoc DocBookId
@@ -99,7 +112,8 @@ BEGIN
 			@UserIncomingDocId = Id, 
 			@ReadDate = ReadDate
 		FROM edoc.UserIncomingDoc
-		WHERE IncomingDocId = @IncomingDocId AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
+		WHERE IncomingDocId = @IncomingDocId 
+			AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
 		
 		-- Nếu đã nhận thì ghi lịch sử
 		IF @UserIncomingDocId IS NOT NULL
@@ -107,7 +121,10 @@ BEGIN
 			SET @OpinionIncomingDocId = (
 				SELECT TOP 1 Id
 				FROM edoc.OpinionIncomingDoc
-				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
+				WHERE IncomingDocId = @IncomingDocId 
+					AND UserIncomingDocId = @UserIncomingDocId 
+					AND OpinionUserRoleId = @RoleId 
+					AND OpinionType = @OpinionType
 			);
 
 			IF @OpinionIncomingDocId IS NULL
@@ -268,7 +285,7 @@ BEGIN
 					@ReceiveRoleId,
 					@ReceiveRoleUnitName,
 					@current_date,
-					IIF(@OpinionStatus = 0, @current_date, null),
+					IIF(@OpinionStatus = 0, @current_date, NULL),
 					@ExpiredDate,
 					--@CompleteDate,
 					@TransferUserIncomingDocStatus,

@@ -1,0 +1,337 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferSingleUnit]    Script Date: 9/29/2025 3:03:46 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		AI Assistant
+-- Create date:	9/10/2025
+-- Description:	Chuyển đơn vị văn bản đến - clone sang các đơn vị chủ trì/phối hợp
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_IncomingDocTransferSingleUnit]
+    @IncomingDocId BIGINT,  -- IncomingDocId gốc
+    @RoleId INT, -- RoleId lưu vào UserIncomingDoc
+    @UserId INT, -- UserId người thực hiện chuyển
+    @DepartmentCode NVARCHAR(255),
+	@ProsessRoleId INT
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    --SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    BEGIN TRY
+        --
+        -- All other declarations and initialisation
+        --
+        DECLARE @current_date DATETIME = GETDATE(),
+                @NewIncomingDocId BIGINT,
+                @UnitId INT,
+                @Name NVARCHAR(255),
+                @OriginalUnitId INT,
+                @OriginalStatus INT,
+                @UserIncomingDocId BIGINT,
+                @ReceiveRoleId INT,
+                @ReceiveRoleName NVARCHAR(MAX);
+
+        /*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+        SET @UnitId = NULL;
+		SELECT TOP 1 @UnitId = d.Id, @Name = d.Name FROM dbo.Department as d WHERE d.Code = @DepartmentCode;
+		
+		-- Get original document info
+        SELECT @OriginalUnitId = UnitId,
+               @OriginalStatus = Status
+        FROM edoc.IncomingDoc WITH (NOLOCK)
+        WHERE Id = @IncomingDocId;
+
+		-- Clone new IncomingDoc record
+			INSERT INTO edoc.IncomingDoc
+			(
+				UnitId,
+				ReceivedDate,
+				Number,
+				Notation,
+				NotationText,
+				Abstract,
+				PublishUnit,
+				PublishDate,
+				SignerRole,
+				Signer,
+				SignDate,
+				NumberPaper,
+				NumberCopies,
+				SecretId,
+				UrgentId,
+				Approver,
+				Approved,
+				Sents,
+				Recipients,
+				DocBookId,
+				DocTypeId,
+				DocFieldId,
+				IsHandling,
+				IsInterDoc,
+				IsUnitSend,
+				UnitSend,
+				ExpiredDate,
+				ID_VBLIENTHONG,
+				PreviousIncomingDocId,
+				PreviousUserIncomingDocId,
+				PreviousOutgoingDocId,
+				PreviousUserOutgoingDocId,
+				ModifiedUserId,
+				ModifiedDate,
+				CreatedUserRoleId,
+				CreatedUserId,
+				CreatedDate,
+				ReceivedPaperDate,
+				IsReceivedPaper,
+				ArchiveStatus,
+				DocumentCode,
+				MoveAnnouncement,
+				MoveAnnouncementDate,
+				IsDeleted,
+				ReceivedTypeId,
+				ReplyDocId,
+				ReplyNotation,
+				LeaderRecipientCode,
+				LeaderRecipient,
+				PresideRecipientCode,
+				PresideRecipient,
+				CoordinatedRecipientCode,
+				CoordinatedRecipient,
+				Note,
+				NeedFollow,
+				HasPaperCopy,
+				HasNoFile,
+				LanguageId,
+				PageCount,
+				PositionName,
+				LeaderRecipientSuggest,
+				LeaderRecipientSuggestIds,
+				DraftUnitName,
+				MeetingStartDate,
+				MeetingEndDate,
+				MeetingMaster,
+				Status,
+				ParentId
+			)
+			SELECT @UnitId,       -- UnitId mới
+				   @current_date, -- ReceivedDate
+				   NULL,          -- Number (NULL)
+				   Notation,
+				   NotationText,
+				   Abstract,
+				   PublishUnit,
+				   PublishDate,
+				   SignerRole,
+				   Signer,
+				   SignDate,
+				   NumberPaper,
+				   NumberCopies,
+				   SecretId,
+				   UrgentId,
+				   Approver,
+				   0,             -- Approved = 0
+				   Sents,
+				   Recipients,
+				   NULL,
+				   DocTypeId,
+				   DocFieldId,
+				   IsHandling,
+				   IsInterDoc,
+				   IsUnitSend,
+				   UnitSend,
+				   ExpiredDate,
+				   ID_VBLIENTHONG,
+				   @IncomingDocId,           -- PreviousIncomingDocId = Id gốc
+				   NULL,          -- PreviousUserIncomingDocId
+				   PreviousOutgoingDocId,
+				   PreviousUserOutgoingDocId,
+				   @UserId,       -- ModifiedUserId
+				   @current_date, -- ModifiedDate
+				   CreatedUserRoleId,
+				   @UserId,       -- CreatedUserId
+				   @current_date, -- CreatedDate
+				   ReceivedPaperDate,
+				   IsReceivedPaper,
+				   ArchiveStatus,
+				   DocumentCode,
+				   MoveAnnouncement,
+				   MoveAnnouncementDate,
+				   IsDeleted,
+				   ReceivedTypeId,
+				   ReplyDocId,
+				   ReplyNotation,
+				   LeaderRecipientCode,
+				   LeaderRecipient,
+				   PresideRecipientCode,
+				   PresideRecipient,
+				   CoordinatedRecipientCode,
+				   CoordinatedRecipient,
+				   Note,
+				   NeedFollow,
+				   HasPaperCopy,
+				   HasNoFile,
+				   LanguageId,
+				   PageCount,
+				   PositionName,
+				   LeaderRecipientSuggest,
+				   LeaderRecipientSuggestIds,
+				   DraftUnitName,
+				   MeetingStartDate,
+				   MeetingEndDate,
+				   MeetingMaster,
+				   0,             -- Status = 0
+				   @IncomingDocId            -- ParentId = Id văn bản cũ
+			FROM edoc.IncomingDoc WITH (NOLOCK)
+			WHERE Id = @IncomingDocId;
+
+			-- Get new IncomingDocId
+			SET @NewIncomingDocId = SCOPE_IDENTITY();
+
+			-- Insert attach incoming doc add new
+			INSERT INTO edoc.AttachmentIncomingDoc (IncomingDocId, FileName, FileDescription, FilePath, Extension, Status, CreatedUserId, CreatedDate)
+			SELECT @NewIncomingDocId,
+				   aid.FileName,
+				   aid.FileDescription,
+				   aid.FilePath,
+				   aid.Extension,
+				   1,
+				   @UserId,
+				   @current_date
+			FROM edoc.AttachmentIncomingDoc aid
+			WHERE aid.IncomingDocId = @IncomingDocId;
+			
+			-- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
+			SET @ReceiveRoleId = NULL;
+			SET @ReceiveRoleName = NULL;
+
+			SELECT TOP 1
+				   @ReceiveRoleId = Id,
+				   @ReceiveRoleName = Name
+			FROM dbo.Role
+			WHERE UnitId = @UnitId
+				  AND Code = 'VanThuDonVi';
+
+			-- Kiểm tra xem đã gửi hay chưa
+			SET @UserIncomingDocId =
+			(
+				SELECT TOP 1
+					   Id
+				FROM edoc.UserIncomingDoc
+				WHERE IncomingDocId = @NewIncomingDocId
+					  AND ReceiveRoleId = @ReceiveRoleId
+			);
+
+			IF @UserIncomingDocId IS NULL
+			BEGIN
+				-- Tạo mới lịch sử cho role đó
+				INSERT INTO edoc.UserIncomingDoc
+				(
+					IncomingDocId,
+					UserSend,
+					UserSendName,
+					UserSendRoleId,
+					UserReceiveName,
+					ReceiveRoleId,
+					ReceiveRoleUnitName,
+					SendDate,
+					Status,
+					SendType,
+					ProsessRoleId
+				)
+				VALUES
+				(   @NewIncomingDocId, 
+					@UserId,
+					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId), 
+					@RoleId,
+					@ReceiveRoleName,
+					@ReceiveRoleId, 
+					@Name, 
+					@current_date,
+					1, -- Status = 1 Chưa xử lý
+					2, -- SendType = 2 (chuyển đơn vị)
+					@ProsessRoleId
+				);
+
+				SET @UserIncomingDocId = SCOPE_IDENTITY();
+			END;
+
+			-- Tạo mới lịch sử chi tiết
+			INSERT INTO edoc.OpinionIncomingDoc
+			(
+				IncomingDocId,
+				UserIncomingDocId,
+				OpinionUserId,
+				OpinionUserRoleId,
+				Opinion,
+				Status,
+				OpinionDate,
+				OpinionType
+			)
+			VALUES
+			(   @NewIncomingDocId, 
+				@UserIncomingDocId, 
+				@UserId, 
+				@RoleId, 
+				N'Chuyển văn bản đến ' + @Name,
+				0,               -- Khởi tạo
+				@current_date, 
+				2                -- Lịch sử chuyển
+			);
+
+		SELECT CAST(1 AS BIT) AS Success,
+                N'Chuyển thành công' AS Message;
+
+        COMMIT TRANSACTION;
+
+        /*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        -- Rollback transaction
+        ROLLBACK TRANSACTION;
+
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+
+--SET NOCOUNT OFF;
+END;

@@ -1,0 +1,141 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_ReCallFromParentId]    Script Date: 9/29/2025 3:02:02 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:      Tran Duc Binh
+-- Create date: 14/09/2025
+-- Description: Thu hồi văn bản
+-- =============================================
+ALTER PROCEDURE [edoc].[Prc_UserIncomingDoc_ReCallFromParentId]
+	@IncomingDocId INT,
+	@UserId INT,
+	@RoleId INT,
+    @RecipientCodes XML = NULL,
+    @Opinion NVARCHAR(MAX)
+AS
+BEGIN
+    BEGIN TRY
+    BEGIN TRANSACTION;
+        --
+        -- All other declarations and initialisation
+		DECLARE @current_date DATETIME = GETDATE(),
+				@UnitId INT,
+				@ChildIncomingDocId INT;
+        --
+        -- Declare temp table to parse Recipients
+		IF OBJECT_ID('tempdb..#RecipientCodes') IS NOT NULL
+			DROP TABLE RecipientCodes;
+		CREATE TABLE #RecipientCodes
+		(
+			RecipientCode NVARCHAR(MAX)
+		);
+
+		-- Parse the XML into the temp table UserIncomingDocs
+		INSERT INTO #RecipientCodes (RecipientCode)
+		SELECT 
+			x.v.value('.', 'NVARCHAR(MAX)') AS RecipientCode
+		FROM @RecipientCodes.nodes('/RecipientCodes/RecipientCode') x(v);
+
+		-- Cursor to iterate over Recipients
+		DECLARE code_cursor CURSOR FOR
+			SELECT RecipientCode
+			FROM #RecipientCodes
+			WHERE RecipientCode IS NOT NULL;
+
+		DECLARE @RecipientCode NVARCHAR(MAX);
+
+		OPEN code_cursor;
+		FETCH NEXT FROM code_cursor 
+		INTO @RecipientCode;
+
+		WHILE @@FETCH_STATUS = 0
+		BEGIN
+			SET @UnitId = NULL;
+			SELECT TOP 1 @UnitId = d.Id FROM dbo.Department as d WHERE Code = @RecipientCode
+			
+			IF(@UnitId IS NOT NULL)
+			BEGIN
+				SET @ChildIncomingDocId = NULL;
+				SELECT TOP 1 @ChildIncomingDocId = i.Id FROM edoc.IncomingDoc as i WHERE i.ParentId = @IncomingDocId and i.UnitId = @UnitId
+				
+				IF(@ChildIncomingDocId IS NOT NULL)
+				BEGIN
+					UPDATE edoc.IncomingDoc SET Status = 13 WHERE Id = @ChildIncomingDocId; -- Status = 13 Lấy Lại Văn Bản
+					
+					UPDATE edoc.UserIncomingDoc SET Status = 4 WHERE IncomingDocId  = @ChildIncomingDocId; -- Status = 4 Bị Thu Hồi
+					
+					INSERT INTO edoc.OpinionIncomingDoc
+					(
+						IncomingDocId,
+						UserIncomingDocId,
+						OpinionUserId,
+						OpinionUserRoleId,
+						Opinion,
+						Status,
+						OpinionDate,
+						OpinionType
+					)
+					SELECT 
+						@ChildIncomingDocId,
+						u.Id,
+						@UserId,
+						@RoleId,
+						@Opinion,
+						4,              -- Status = 4 Bị Thu Hồi
+						@current_date,
+						2               -- Lịch sử
+					FROM edoc.UserIncomingDoc u
+					WHERE u.IncomingDocId = @ChildIncomingDocId;
+				END
+			END
+			
+            FETCH NEXT FROM code_cursor INTO @RecipientCode;
+		END
+		
+        -- Clean up cursor
+        CLOSE code_cursor;
+		DEALLOCATE code_cursor;
+
+    COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   
+			@ErrorMessage,
+			@ErrorSeverity,
+			@ErrorState,
+			@ErrorNumber,    -- parameter: original error number.
+			@ErrorSeverity,  -- parameter: original error severity.
+			@ErrorState,     -- parameter: original error state.
+			@ErrorProcedure, -- parameter: original error procedure name.
+			@ErrorLine       -- parameter: original error line number.
+        );
+    END CATCH;
+END;
