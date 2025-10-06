@@ -42,7 +42,7 @@ BEGIN
             SELECT s.Id,
                    ros.DepartmentId,
                    d.Name AS DepartmentName,
-                   s.UnitId,
+                   r.UnitId,
                    s.Code,
                    s.FirstName,
                    s.LastName,
@@ -59,10 +59,11 @@ BEGIN
                     ON s.Id = ros.StaffId
                 JOIN dbo.Role (NOLOCK) r
                     ON r.Id = ros.RoleId
-                       AND s.UnitId = r.UnitId
+                       --AND s.UnitId = r.UnitId
                 LEFT JOIN dbo.Department (NOLOCK) d
                     ON d.Id = ros.DepartmentId
             WHERE s.IsDeleted = 0
+                and r.UnitId = @UnitId
                 and (@RoleCode IS NULL OR 
                 (@RoleCode IS NOT NULL 
                 AND r.Code IN (
@@ -80,7 +81,7 @@ BEGIN
         ELSE
         BEGIN
             IF @UnitId IS NULL
-                SET @UnitId = 0;
+                SET @UnitId = 1;
             DECLARE @tempID TABLE (Id INT);
             WITH Temp
             AS
@@ -100,7 +101,6 @@ BEGIN
             SELECT Id
             FROM Temp;
 
-
             SELECT s.[Id],
                    ros.[DepartmentId],
                    d.Name AS DepartmentName,
@@ -109,7 +109,7 @@ BEGIN
                    s.[LastName],
                    s.[Email],
                    s.[IsLocked],
-                   s.[UnitId],
+                   r.[UnitId],
                    s.UserName,
                    p.Name AS PositionName,
                    r.Id AS RoleId,
@@ -121,7 +121,7 @@ BEGIN
                     ON s.Id = ros.StaffId
                 JOIN dbo.Role (NOLOCK) r
                     ON r.Id = ros.RoleId
-                       AND s.UnitId = r.UnitId
+                       --AND s.UnitId = r.UnitId
                 LEFT JOIN dbo.Department d
                     ON d.Id = ros.DepartmentId
             WHERE s.[UnitId] IN ( SELECT Id FROM @tempID )
