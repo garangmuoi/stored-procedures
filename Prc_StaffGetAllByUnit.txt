@@ -1,0 +1,216 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [dbo].[Prc_StaffGetAllByUnit]    Script Date: 10/6/2025 1:52:52 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+
+-- =============================================
+-- Author:		Long Nguyen
+-- Create date:	2016/4/28
+-- Description:	<Description,,>
+-- =============================================
+ALTER PROCEDURE [dbo].[Prc_StaffGetAllByUnit]
+    -- Add the parameters for the stored procedure here
+    @DepartmentId INT,
+    @UnitId INT,
+    @RoleCode NVARCHAR(200) = NULL
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    -- interfering with SELECT statements.
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        --
+        -- Set default values if (non-db) NULLs passed in
+        --		
+        IF @DepartmentId IS NULL
+        BEGIN
+            SET @DepartmentId = 0;
+        END;
+        --
+        -- All other declarations and initialisation
+
+        /*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+        IF @UnitId IS NOT NULL
+        BEGIN
+            SELECT s.Id,
+                   s.DepartmentId,
+                   d.Name AS DepartmentName,
+                   s.UnitId,
+                   s.Code,
+                   s.FirstName,
+                   s.LastName,
+                   s.Email,
+                   s.IsLocked,
+                   s.UserName,
+                   p.Name AS PositionName,
+                   r.Id AS RoleId,
+                   r.Name AS RoleName
+            FROM dbo.Staff (NOLOCK) s
+                LEFT JOIN dbo.Department (NOLOCK) d
+                    ON d.Id = s.DepartmentId
+                LEFT JOIN dbo.Position (NOLOCK) p
+                    ON p.Id = s.PositionId
+                LEFT JOIN dbo.RoleOfStaff (NOLOCK) ros
+                    ON s.Id = ros.StaffId
+                JOIN dbo.Role (NOLOCK) r
+                    ON r.Id = ros.RoleId
+                       AND s.UnitId = r.UnitId
+            WHERE s.IsDeleted = 0
+                and (@RoleCode IS NULL OR 
+                (@RoleCode IS NOT NULL 
+                AND r.Code IN (
+                    SELECT value 
+                    FROM dbo.SplitString(@RoleCode, ',')
+                    )
+                )
+                OR (@RoleCode = 'NotLanhDao' AND r.Code NOT LIKE '%LanhDao%')
+            )
+            ORDER BY p.SortOrder,
+                     YEAR(s.BirthOfDay),
+                     CONCAT(s.FirstName, ' ', s.LastName);
+        --AND (s.DepartmentId = @DepartmentId OR @DepartmentId = 0)
+        END;
+        ELSE
+        BEGIN
+            IF @UnitId IS NULL
+                SET @UnitId = 0;
+            DECLARE @tempID TABLE (Id INT);
+            WITH Temp
+            AS
+                (
+                SELECT Id
+                FROM dbo.Department
+                WHERE Id = @UnitId
+                      AND IsDeleted = 0
+                UNION ALL
+                SELECT d.Id
+                FROM Temp t,
+                     dbo.Department d
+                WHERE t.Id = d.ParentId
+                      AND d.IsDeleted = 0
+                )
+            INSERT @tempID (Id)
+            SELECT Id
+            FROM Temp;
+
+
+            SELECT s.[Id],
+                   s.[DepartmentId],
+                   d.Name AS DepartmentName,
+                   s.[Code],
+                   s.[FirstName],
+                   s.[LastName],
+                   s.[Email],
+                   s.[IsLocked],
+                   s.[UnitId],
+                   s.UserName,
+                   p.Name AS PositionName,
+                   r.Id AS RoleId,
+                   r.Name AS RoleName
+            FROM [dbo].[Staff] s
+                LEFT JOIN dbo.Department d
+                    ON d.Id = s.DepartmentId
+                LEFT JOIN dbo.Position p
+                    ON p.Id = s.PositionId
+                LEFT JOIN dbo.RoleOfStaff (NOLOCK) ros
+                    ON s.Id = ros.StaffId
+                JOIN dbo.Role (NOLOCK) r
+                    ON r.Id = ros.RoleId
+                       AND s.UnitId = r.UnitId
+            WHERE s.[UnitId] IN ( SELECT Id FROM @tempID )
+                  AND s.IsDeleted = 0
+                  and (@RoleCode IS NULL OR 
+                (@RoleCode IS NOT NULL 
+                AND r.Code IN (
+                    SELECT value 
+                    FROM dbo.SplitString(@RoleCode, ',')
+                    )
+                )
+                OR (@RoleCode = 'NotLanhDao' AND r.Code NOT LIKE '%LanhDao%')
+            )
+            ORDER BY p.SortOrder,
+                     YEAR(s.BirthOfDay),
+                     CONCAT(s.FirstName, ' ', s.LastName);
+        END;
+
+    /*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage
+            = N'Error %d, Level %d, State %d, Procedure %s, Line %d, ' + N'Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+    SET NOCOUNT OFF;
+END;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
