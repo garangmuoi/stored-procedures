@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [dbo].[Prc_StaffGetLead]    Script Date: 9/18/2025 5:54:50 PM ******/
+/****** Object:  StoredProcedure [dbo].[Prc_StaffGetLead]    Script Date: 10/6/2025 2:43:11 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -28,7 +28,7 @@ BEGIN
     StaffWithRole AS (
         SELECT 
             s.Id,
-            s.DepartmentId,
+            ros.DepartmentId,
             s.PositionId,
             r.UnitId,
             s.Code,
@@ -87,16 +87,16 @@ BEGIN
         LEFT JOIN Role r ON ros.RoleId = r.Id
         LEFT JOIN Position p ON s.PositionId = p.Id
         LEFT JOIN Department u ON r.UnitId = u.Id
-        LEFT JOIN Department d ON s.DepartmentId = d.Id
+        LEFT JOIN Department d ON ros.DepartmentId = d.Id
         WHERE s.IsDeleted = 0
-          AND (@RoleCode IS NULL OR r.Code IN (SELECT RoleCode FROM RoleFilter))
+          AND (@RoleCode IS NULL OR r.Code IN (SELECT RoleCode FROM RoleFilter) OR (@RoleCode = 'NotLanhDao' AND r.Code NOT LIKE '%LanhDao%'))
           AND (@SearchText IS NULL OR 
                s.FirstName LIKE '%' + @SearchText + '%' OR 
                s.LastName LIKE '%' + @SearchText + '%' OR 
                s.UserName LIKE '%' + @SearchText + '%' OR
                (s.FirstName + ' ' + s.LastName) LIKE '%' + @SearchText + '%')
           AND (@UnitId IS NULL OR r.UnitId = @UnitId)
-          AND (@DepartmentId IS NULL OR s.DepartmentId = @DepartmentId)
+          AND (@DepartmentId IS NULL OR ros.DepartmentId = @DepartmentId)
           AND (@IsLocked IS NULL OR s.IsLocked = @IsLocked)
     ),
     FilteredStaff AS (

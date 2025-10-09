@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]    Script Date: 9/20/2025 8:52:09 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_OpinionIncomingDocGetByIncomingDocId]    Script Date: 10/6/2025 8:28:36 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -42,7 +42,7 @@ begin
               ,oid.OpinionType
               ,UserSendUnitId = r.UnitId
               ,UserSendUnitName = d_send.Name  
-			  ,concat(s_send.FirstName, '',s_send.LastName) as OpinionUserName
+			  ,concat(s_send.FirstName, ' ',s_send.LastName) as OpinionUserName
 			  ,r.Name as OpinionUserRoleName
         from edoc.OpinionIncomingDoc (nolock) oid
 		LEFT JOIN dbo.Role (NOLOCK) r on r.Id = oid.OpinionUserRoleId
@@ -50,8 +50,8 @@ begin
         LEFT JOIN dbo.Staff (nolock) s_send on oid.OpinionUserId = s_send.Id        
         where oid.IncomingDocId = @IncomingDocId
         AND (@OpinionType IS NULL OR oid.OpinionType = @OpinionType)
-		AND (@UserIncomingDocId IS NULL OR oid.UserIncomingDocId = @UserIncomingDocId)
-        ORDER BY oid.OpinionDate;
+		AND (@UserIncomingDocId IS NULL OR @UserIncomingDocId = 0 OR oid.UserIncomingDocId = @UserIncomingDocId)
+        ORDER BY oid.Id;
 
     /*******************************************************************************
     * End of SQL statment(s).
