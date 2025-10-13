@@ -1,4 +1,6 @@
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 9/23/2025 2:52:49 PM ******/
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocTransferUnit]    Script Date: 10/13/2025 2:24:35 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -198,7 +200,7 @@ BEGIN
                        NumberCopies,
                        SecretId,
                        UrgentId,
-                       Approver,
+                       NULL,
                        0,             -- Approved = 0
                        Sents,
                        Recipients,
@@ -268,7 +270,7 @@ BEGIN
                        @UserId,
                        @current_date
                 FROM edoc.AttachmentIncomingDoc aid
-                WHERE aid.IncomingDocId = @Id;
+                WHERE aid.IncomingDocId = @Id and aid.Status = 1;
 				
                 -- Lấy Role theo TranferRoleCode và ReceiveRoleUnitId
                 SET @ReceiveRoleId = NULL;
