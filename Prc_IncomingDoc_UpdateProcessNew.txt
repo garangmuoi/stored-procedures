@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 10/6/2025 10:12:01 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 10/15/2025 4:58:23 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -45,7 +45,10 @@ BEGIN
 				@ReceiveRoleName NVARCHAR(MAX),
 				@ReceiveRoleUnitId INT,
 				@ReceiveRoleUnitName NVARCHAR(MAX),
-				@ReadDate DATETIME;
+				@ReadDate DATETIME,
+				@UserReceive INT,
+				@UserReceiveRoleId INT,
+				@RoleCode NVARCHAR(MAX);
 
         /*******************************************************************************
 		* Add SQL statement(s) here.
@@ -115,6 +118,33 @@ BEGIN
 		WHERE IncomingDocId = @IncomingDocId 
 			AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
 		
+		IF @UserIncomingDocId IS NULL
+		BEGIN
+			SELECT @RoleCode = Code
+			FROM dbo.Role WHERE Id = @RoleId
+			
+			IF @RoleCode = 'ThuKyLanhDaoBo'
+			BEGIN
+				SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
+				FROM dbo.RoleOfStaff AS ros
+				JOIN dbo.Role AS r ON ros.RoleId = r.Id
+				WHERE r.Code = 'LanhDaoBo'
+				AND ros.DepartmentId IN (
+					SELECT DepartmentId
+					FROM dbo.RoleOfStaff
+					WHERE StaffId = @UserId
+					AND RoleId = @RoleId
+				)
+				
+				SELECT TOP 1 
+					@UserIncomingDocId = Id, 
+					@ReadDate = ReadDate
+				FROM edoc.UserIncomingDoc
+				WHERE IncomingDocId = @IncomingDocId 
+					AND (UserReceive = @UserReceive AND UserReceiveRoleId = @UserReceiveRoleId);
+			END
+		END
+
 		-- Nếu đã nhận thì ghi lịch sử
 		IF @UserIncomingDocId IS NOT NULL
 		BEGIN
@@ -125,6 +155,7 @@ BEGIN
 					AND UserIncomingDocId = @UserIncomingDocId 
 					AND OpinionUserRoleId = @RoleId 
 					AND OpinionType = @OpinionType
+					AND OpinionUserId = @UserId
 			);
 
 			IF @OpinionIncomingDocId IS NULL
@@ -299,6 +330,15 @@ BEGIN
 				
 				SET @UserIncomingDocId = SCOPE_IDENTITY();
 			END
+			ELSE
+            BEGIN
+				IF @TransferUserIncomingDocStatus IS NOT NULL
+				BEGIN
+					UPDATE edoc.UserIncomingDoc 
+					SET Status = @TransferUserIncomingDocStatus
+					WHERE Id = @UserIncomingDocId;
+				END
+            END
 
 			-- Tạo mới lịch sử chi tiết
 			SET @OpinionIncomingDocId = (
@@ -361,7 +401,14 @@ BEGIN
 				x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
 				x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
 				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId,
-				x.v.value('(ExpiredDate)[1]', 'DATETIME') AS ExpiredDate
+				CASE 
+                    WHEN x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') IS NULL 
+                         OR x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') = '' 
+                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) IS NULL 
+                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) = '1900-01-01 00:00:00.000'
+                    THEN NULL 
+                    ELSE x.v.value('(ExpiredDate)[1]', 'DATETIME')
+                END AS RecipientExpiredDate
 			FROM @Recipients.nodes('/Recipients/Recipient') x(v);
 			
 			-- Cursor to iterate over Recipients
