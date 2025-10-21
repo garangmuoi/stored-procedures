@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 10/15/2025 4:58:23 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 10/21/2025 2:13:42 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -196,9 +196,12 @@ BEGIN
 				END
 				ELSE
 				BEGIN
-					UPDATE edoc.OpinionIncomingDoc 
-					SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
-					WHERE Id = @OpinionIncomingDocId
+					IF @OpinionStatus IS NOT NULL
+                    BEGIN
+						UPDATE edoc.OpinionIncomingDoc 
+						SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+						WHERE Id = @OpinionIncomingDocId
+					END
 				END
 			END
 
@@ -489,6 +492,12 @@ BEGIN
 					-- Lấy ID vừa insert
 					SET @UserIncomingDocId = SCOPE_IDENTITY();
 				END
+				ELSE
+                BEGIN
+                    UPDATE edoc.UserIncomingDoc
+                    SET Status = @TransferUserIncomingDocStatus
+                    WHERE Id = @UserIncomingDocId
+                END
 
 				-- Tạo mới lịch sử chi tiết
 				SET @OpinionIncomingDocId = (
