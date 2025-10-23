@@ -33,6 +33,50 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessNew]
 AS
 BEGIN
     BEGIN TRY
+		IF @Recipients IS NOT NULL
+		BEGIN
+			-- Declare temp table to parse Recipients
+			IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
+				DROP TABLE #Recipients;
+			CREATE TABLE #Recipients
+			(
+				RecipientId INT,
+				RecipientName NVARCHAR(255),
+				RecipientRoleId INT,
+				RecipientProsessRoleId INT,
+				RecipientExpiredDate DATETIME
+			);
+
+			-- Parse the XML into the temp table #Recipients
+			INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate)
+			SELECT 
+				x.v.value('(UserId)[1]', 'INT') AS RecipientId,
+				x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
+				x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
+				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId,
+				CASE 
+                    WHEN x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') IS NULL 
+                         OR x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') = '' 
+                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) IS NULL 
+                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) = '1900-01-01 00:00:00.000'
+                    THEN NULL 
+                    ELSE x.v.value('(ExpiredDate)[1]', 'DATETIME')
+                END AS RecipientExpiredDate
+			FROM @Recipients.nodes('/Recipients/Recipient') x(v);
+			
+			-- Cursor to iterate over Recipients
+			DECLARE recipient_cursor CURSOR FOR
+				SELECT RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate
+				FROM #Recipients
+				WHERE RecipientId IS NOT NULL;
+
+			DECLARE @RecipientId INT,
+					@RecipientName NVARCHAR(255),
+					@RecipientRoleId INT,
+					@RecipientProsessRoleId INT,
+					@RecipientExpiredDate DATETIME;
+		END
+
         BEGIN TRANSACTION;
         --
         -- All other declarations and initialisation
@@ -56,7 +100,7 @@ BEGIN
 		-- Lấy IncomingDoc Status hiện tại
 		SET @UserSendStatus = (
 			SELECT TOP 1 Status
-			FROM edoc.IncomingDoc
+			FROM edoc.IncomingDoc WITH (NOLOCK)
 			WHERE Id = @IncomingDocId
 		);
 		
@@ -82,7 +126,7 @@ BEGIN
 					ModifiedUserId = @UserId,
 					ModifiedDate = @current_date,
 					Approved = 1,
-					Approver = (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId)
+					Approver = (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WITH (NOLOCK) WHERE Id = @UserId)
 				WHERE Id = @IncomingDocId;
 			END
 			ELSE
@@ -114,24 +158,24 @@ BEGIN
 		SELECT TOP 1 
 			@UserIncomingDocId = Id, 
 			@ReadDate = ReadDate
-		FROM edoc.UserIncomingDoc
+		FROM edoc.UserIncomingDoc WITH (NOLOCK)
 		WHERE IncomingDocId = @IncomingDocId 
 			AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
 		
 		IF @UserIncomingDocId IS NULL
 		BEGIN
 			SELECT @RoleCode = Code
-			FROM dbo.Role WHERE Id = @RoleId
+			FROM dbo.Role WITH (NOLOCK) WHERE Id = @RoleId
 			
 			IF @RoleCode = 'ThuKyLanhDaoBo'
 			BEGIN
 				SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
-				FROM dbo.RoleOfStaff AS ros
-				JOIN dbo.Role AS r ON ros.RoleId = r.Id
+				FROM dbo.RoleOfStaff AS ros WITH (NOLOCK)
+				JOIN dbo.Role AS r WITH (NOLOCK) ON ros.RoleId = r.Id
 				WHERE r.Code = 'LanhDaoBo'
 				AND ros.DepartmentId IN (
 					SELECT DepartmentId
-					FROM dbo.RoleOfStaff
+					FROM dbo.RoleOfStaff WITH (NOLOCK)
 					WHERE StaffId = @UserId
 					AND RoleId = @RoleId
 				)
@@ -139,7 +183,7 @@ BEGIN
 				SELECT TOP 1 
 					@UserIncomingDocId = Id, 
 					@ReadDate = ReadDate
-				FROM edoc.UserIncomingDoc
+				FROM edoc.UserIncomingDoc WITH (NOLOCK)
 				WHERE IncomingDocId = @IncomingDocId 
 					AND (UserReceive = @UserReceive AND UserReceiveRoleId = @UserReceiveRoleId);
 			END
@@ -150,7 +194,7 @@ BEGIN
 		BEGIN
 			SET @OpinionIncomingDocId = (
 				SELECT TOP 1 Id
-				FROM edoc.OpinionIncomingDoc
+				FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
 				WHERE IncomingDocId = @IncomingDocId 
 					AND UserIncomingDocId = @UserIncomingDocId 
 					AND OpinionUserRoleId = @RoleId 
@@ -246,7 +290,7 @@ BEGIN
 		-- Lấy UnitId của current từ Role theo RoleId
 		SET @ReceiveRoleUnitId = (
 			SELECT TOP 1 UnitId
-			FROM dbo.Role
+			FROM dbo.Role WITH (NOLOCK)
 			WHERE Id = @RoleId
 		);
 
@@ -260,14 +304,14 @@ BEGIN
 			SELECT TOP 1 
 				@ReceiveRoleId = Id,
 				@ReceiveRoleName = Name
-			FROM dbo.Role
+			FROM dbo.Role WITH (NOLOCK)
 			WHERE UnitId = @ReceiveRoleUnitId 
 				AND Code = @TransferRoleCode;
 				
 			-- Kiểm tra xem đã gửi hay chưa
 			SET @UserIncomingDocId = (
 				SELECT TOP 1 Id
-				FROM edoc.UserIncomingDoc
+				FROM edoc.UserIncomingDoc WITH (NOLOCK)
 				WHERE IncomingDocId = @IncomingDocId AND ReceiveRoleId = @ReceiveRoleId
 			);
 			
@@ -278,7 +322,7 @@ BEGIN
 				BEGIN
 					SET @ReceiveRoleUnitName = (
 						SELECT TOP 1 Name
-						FROM dbo.Department
+						FROM dbo.Department WITH (NOLOCK)
 						WHERE Id = @ReceiveRoleUnitId
 					);
 				END
@@ -311,7 +355,7 @@ BEGIN
 				(
 					@IncomingDocId,
 					@UserId,
-					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WHERE Id = @UserId),
+					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WITH (NOLOCK) WHERE Id = @UserId),
 					@RoleId,
 					--@UserReceive,
 					@ReceiveRoleName,
@@ -346,7 +390,7 @@ BEGIN
 			-- Tạo mới lịch sử chi tiết
 			SET @OpinionIncomingDocId = (
 				SELECT TOP 1 Id
-				FROM edoc.OpinionIncomingDoc
+				FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
 				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 			);
 
@@ -385,47 +429,6 @@ BEGIN
 			
 		IF @Recipients IS NOT NULL
 		BEGIN
-			-- Declare temp table to parse Recipients
-			IF OBJECT_ID('tempdb..#Recipients') IS NOT NULL
-				DROP TABLE #Recipients;
-			CREATE TABLE #Recipients
-			(
-				RecipientId INT,
-				RecipientName NVARCHAR(255),
-				RecipientRoleId INT,
-				RecipientProsessRoleId INT,
-				RecipientExpiredDate DATETIME
-			);
-
-			-- Parse the XML into the temp table #Recipients
-			INSERT INTO #Recipients (RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate)
-			SELECT 
-				x.v.value('(UserId)[1]', 'INT') AS RecipientId,
-				x.v.value('(UserName)[1]', 'NVARCHAR(255)') AS RecipientName,
-				x.v.value('(RoleId)[1]', 'INT') AS RecipientRoleId,
-				x.v.value('(ProsessRoleId)[1]', 'INT') AS RecipientProsessRoleId,
-				CASE 
-                    WHEN x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') IS NULL 
-                         OR x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)') = '' 
-                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) IS NULL 
-                         OR TRY_CONVERT(DATETIME, x.v.value('(ExpiredDate)[1]', 'NVARCHAR(MAX)')) = '1900-01-01 00:00:00.000'
-                    THEN NULL 
-                    ELSE x.v.value('(ExpiredDate)[1]', 'DATETIME')
-                END AS RecipientExpiredDate
-			FROM @Recipients.nodes('/Recipients/Recipient') x(v);
-			
-			-- Cursor to iterate over Recipients
-			DECLARE recipient_cursor CURSOR FOR
-				SELECT RecipientId, RecipientName, RecipientRoleId, RecipientProsessRoleId, RecipientExpiredDate
-				FROM #Recipients
-				WHERE RecipientId IS NOT NULL;
-
-			DECLARE @RecipientId INT,
-					@RecipientName NVARCHAR(255),
-					@RecipientRoleId INT,
-					@RecipientProsessRoleId INT,
-					@RecipientExpiredDate DATETIME;
-
 			OPEN recipient_cursor;
 			FETCH NEXT FROM recipient_cursor 
 			INTO @RecipientId, @RecipientName, @RecipientRoleId, @RecipientProsessRoleId, @RecipientExpiredDate;
@@ -435,7 +438,7 @@ BEGIN
 				-- Kiểm tra xem đã gửi hay chưa
 				SET @UserIncomingDocId = (
 					SELECT TOP 1 Id
-					FROM edoc.UserIncomingDoc
+					FROM edoc.UserIncomingDoc WITH (NOLOCK)
 					WHERE IncomingDocId = @IncomingDocId AND UserReceive = @RecipientId
 				);
 
@@ -502,7 +505,7 @@ BEGIN
 				-- Tạo mới lịch sử chi tiết
 				SET @OpinionIncomingDocId = (
 					SELECT TOP 1 Id
-					FROM edoc.OpinionIncomingDoc
+					FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
 					WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 				);
 
