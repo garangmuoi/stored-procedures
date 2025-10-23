@@ -626,7 +626,7 @@ BEGIN
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
+                  + N' and id.Status in (5,6,7,9) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
 				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
@@ -652,7 +652,7 @@ BEGIN
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
+                  + N' and id.Status in (5,6,7,9) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
 				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
@@ -699,14 +699,9 @@ BEGIN
     --Văn bản đến 	Lãnh đạo đơn vị / Lãnh đạo trung tâm / Lãnh đạo phòng
     ELSE IF @DocumentType = 16
     BEGIN
-        IF @RoleCode = 'LanhDaoDonVi'
-            SET @where_clause = @where_clause + N' and id.Status =6   ';
-        ELSE IF @RoleCode = 'LanhDaoTrungTam'
-                OR @RoleCode = 'LanhDaoPhong'
-            SET @where_clause = @where_clause + N' and id.Status = 7  ';
-
+        IF @RoleCode = 'LanhDaoDonVi' or @RoleCode = 'LanhDaoTrungTam' OR @RoleCode = 'LanhDaoPhong'
+            SET @where_clause = @where_clause + N' and id.Status in (5,6,7,9)   ';
     END;
-    --IF @RoleCode = 'LanhDaoDonVi'
     --IF @RoleCode = 'LanhDaoDonVi'
     --IF @RoleCode = 'LanhDaoTrungTam'
     --IF @RoleCode = 'LanhDaoPhong'
@@ -812,6 +807,10 @@ BEGIN
             SET @where_clause
                 = @where_clause
                   + N' and(id.Status = 7  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
+        ELSE IF @RoleCode = 'ChuyenVien'
+            SET @where_clause
+                = @where_clause
+                  + N' and (id.Status in (5,6,7,9) or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE
             SET @where_clause
                 = @where_clause
