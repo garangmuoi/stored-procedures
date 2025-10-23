@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByPage]    Script Date: 09/30/2025 4:36:25 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByPage]    Script Date: 10/23/2025 9:34:51 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -36,6 +36,7 @@ GO
 --	  "Văn bản đến - Văn bản trả lại",					2	-1
 --	  "Văn bản đến - Mời họp",					14	-1
 --	  "Văn bản đến - Phiếu trình",					15	-1
+--	  "Văn bản đến - Thông báo",					17	-1
 --	  "Văn bản đến - Cần theo dõi",					3	-1
 --	  "Văn bản đến - Trình lãnh đạo",					4	-1
 --	  "Văn bản đến - Chờ xử lý"					5	
@@ -57,7 +58,7 @@ GO
 ALTER PROCEDURE [edoc].[Prc_IncomingDocGetByPage]
     @StartDate DATETIME,
     @EndDate DATETIME,
-    @unitSend NVARCHAR(MAX),
+    @PublishUnit NVARCHAR(MAX),
     @DocBookId INT,
     @DocTypeId INT,
     @StartNumber INT,
@@ -86,7 +87,13 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDocGetByPage]
     @StartMeetingDate DATETIME,
     @EndMeetingDate DATETIME,
     @DraftUnitName NVARCHAR(500),
-    @LeaderName NVARCHAR(500)
+    @LeaderName NVARCHAR(500),
+    @PresideRecipientCode NVARCHAR(500),
+    @CoordinatedRecipientCode NVARCHAR(500),
+    @LeaderRecipient NVARCHAR(500),
+    @LeaderRecipientSuggest NVARCHAR(500),
+    @SortOrder NVARCHAR(500),
+    @SortDirection NVARCHAR(50)
 AS
 BEGIN
     -- SET NOCOUNT ON added to prevent extra result sets from
@@ -105,13 +112,13 @@ BEGIN
         SET @PageSize = 20;
     END;
 
-    IF @unitSend IS NULL
+    IF @PublishUnit IS NULL
     BEGIN
-        SET @unitSend = N'';
+        SET @PublishUnit = N'';
     END;
     ELSE
     BEGIN
-        SET @unitSend = RTRIM(LTRIM(@unitSend));
+        SET @PublishUnit = RTRIM(LTRIM(@PublishUnit));
     END;
 
     IF @DocBookId IS NULL
@@ -186,6 +193,25 @@ BEGIN
     BEGIN
         SET @CoordinatedRecipient = RTRIM(LTRIM(@CoordinatedRecipient));
     END;
+
+    IF @PresideRecipientCode IS NULL
+    BEGIN
+        SET @PresideRecipientCode = N'';
+    END;
+    ELSE
+    BEGIN
+        SET @PresideRecipientCode = RTRIM(LTRIM(@PresideRecipientCode));
+    END;
+
+    IF @CoordinatedRecipientCode IS NULL
+    BEGIN
+        SET @CoordinatedRecipientCode = N'';
+    END;
+    ELSE
+    BEGIN
+        SET @CoordinatedRecipientCode = RTRIM(LTRIM(@CoordinatedRecipientCode));
+    END;
+
     IF @DraftUnitName IS NULL
     BEGIN
         SET @DraftUnitName = N'';
@@ -194,6 +220,7 @@ BEGIN
     BEGIN
         SET @DraftUnitName = RTRIM(LTRIM(@DraftUnitName));
     END;
+
     IF @LeaderName IS NULL
     BEGIN
         SET @LeaderName = N'';
@@ -203,10 +230,26 @@ BEGIN
         SET @LeaderName = RTRIM(LTRIM(@LeaderName));
     END;
 
+    IF @LeaderRecipient IS NULL
+    BEGIN
+        SET @LeaderRecipient = N'';
+    END;
+    ELSE
+    BEGIN
+        SET @LeaderRecipient = RTRIM(LTRIM(@LeaderRecipient));
+    END;
+    IF @LeaderRecipientSuggest IS NULL
+    BEGIN
+        SET @LeaderRecipientSuggest = N'';
+    END;
+    ELSE
+    BEGIN
+        SET @LeaderRecipientSuggest = RTRIM(LTRIM(@LeaderRecipientSuggest));
+    END;
 
     IF @StartDate IS NULL
        AND @EndDate IS NULL
-       AND @unitSend = ''
+       AND @PublishUnit = ''
        AND @DocBookId = 0
        AND @DocTypeId = 0
        AND @StartNumber = 0
@@ -223,6 +266,7 @@ BEGIN
     --
     DECLARE @dinamic_sql NVARCHAR(MAX) = N'',
             @dinamic_sql_01 NVARCHAR(MAX) = N'',
+            @dinamic_sql_02 NVARCHAR(MAX) = N'',
             @where_clause NVARCHAR(MAX) = N'',
             @where_clause_01 NVARCHAR(MAX) = N'',
             @order_by_clause NVARCHAR(MAX) = N'',
@@ -236,7 +280,9 @@ BEGIN
             @IsRepresentDepartment BIT,
             @DepartmentId INT,
             @RoleCode NVARCHAR(50),
-            @view_all_document INT;
+            @view_all_document INT,
+            @UserReceive INT,
+            @UserReceiveRoleId INT;
 
     --LanhDaoBo	Lãnh đạo Bộ
     --LanhDaoVPBo	Lãnh đạo Văn phòng Bộ
@@ -294,58 +340,130 @@ BEGIN
     -- Build where clause
 
     SET @dinamic_sql_01 = N'';
-    SET @dinamic_sql_01
-        = N'
-TRUNCATE TABLE #UserIncomingDoc;
-INSERT #UserIncomingDoc
-(
-    Id,
-    IncomingDocId,
-    UserSend,
-    UserSendName,
-    UserSendRoleId,
-    UserReceive,
-    UserReceiveName,
-    UserReceiveRoleId,
-    ReceiveRoleId,
-    ReceiveRoleUnitName,
-    SendDate,
-    ReadDate,
-    ExpiredDate,
-    CompleteDate,
-    Status,
-    SendType,
-    ProsessRoleId,
-    UserSendStatus,
-    UserReceiveStatus
-)
-SELECT uid.Id,
-       uid.IncomingDocId,
-       uid.UserSend,
-       uid.UserSendName,
-       uid.UserSendRoleId,
-       uid.UserReceive,
-       uid.UserReceiveName,
-       uid.UserReceiveRoleId,
-       uid.ReceiveRoleId,
-       uid.ReceiveRoleUnitName,
-       uid.SendDate,
-       uid.ReadDate,
-       uid.ExpiredDate,
-       uid.CompleteDate,
-       uid.Status,
-       uid.SendType,
-       uid.ProsessRoleId,
-       uid.UserSendStatus,
-       uid.UserReceiveStatus
-FROM edoc.UserIncomingDoc (NOLOCK) uid
-    INNER JOIN edoc.IncomingDoc (NOLOCK) id
-        ON id.Id = uid.IncomingDocId 
-where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType = 1 and ( uid.UserReceive = '
-          + CONVERT(NVARCHAR(20), @UserId) + N' or uid.UserReceive = ' + CONVERT(NVARCHAR(20), @UserId)
-          + N' or ReceiveRoleId =' + CONVERT(NVARCHAR(20), @RoleId) + N' ) )
-				  
-' + @where_clause_01;
+    SET @dinamic_sql_01 = N'
+        TRUNCATE TABLE #UserIncomingDoc;
+        INSERT #UserIncomingDoc
+        (
+            Id,
+            IncomingDocId,
+            UserSend,
+            UserSendName,
+            UserSendRoleId,
+            UserReceive,
+            UserReceiveName,
+            UserReceiveRoleId,
+            ReceiveRoleId,
+            ReceiveRoleUnitName,
+            SendDate,
+            ReadDate,
+            ExpiredDate,
+            CompleteDate,
+            Status,
+            SendType,
+            ProsessRoleId,
+            UserSendStatus,
+            UserReceiveStatus
+        )
+        SELECT uid.Id,
+               uid.IncomingDocId,
+               uid.UserSend,
+               uid.UserSendName,
+               uid.UserSendRoleId,
+               uid.UserReceive,
+               uid.UserReceiveName,
+               uid.UserReceiveRoleId,
+               uid.ReceiveRoleId,
+               uid.ReceiveRoleUnitName,
+               uid.SendDate,
+               uid.ReadDate,
+               uid.ExpiredDate,
+               uid.CompleteDate,
+               uid.Status,
+               uid.SendType,
+               uid.ProsessRoleId,
+               uid.UserSendStatus,
+               uid.UserReceiveStatus
+        FROM edoc.UserIncomingDoc (NOLOCK) uid
+            INNER JOIN edoc.IncomingDoc (NOLOCK) id
+                ON id.Id = uid.IncomingDocId 
+        where  uid.status !=-1 and  id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( (uid.SendType = 1 and ( uid.UserReceive = '
+              + CONVERT(NVARCHAR(20), @UserId) + N') or UserSend =' + CONVERT(NVARCHAR(20), @UserId)
+              + N'  or ReceiveRoleId =' + CONVERT(NVARCHAR(20), @RoleId) + N' ) )		  
+        ' + @where_clause_01;
+
+    IF OBJECT_ID('tempdb..#UserIncomingDocNoFilter') IS NOT NULL
+        DROP TABLE #UserIncomingDocNoFilter;
+    CREATE TABLE [#UserIncomingDocNoFilter]
+    (
+        [Id] BIGINT NOT NULL,
+        IncomingDocId BIGINT,
+        UserSend INT,
+        UserSendName NVARCHAR(500),
+        UserSendRoleId INT,
+        UserReceive INT,
+        UserReceiveName NVARCHAR(500),
+        UserReceiveRoleId INT,
+        ReceiveRoleId INT,
+        ReceiveRoleUnitName NVARCHAR(500),
+        SendDate DATETIME,
+        ReadDate DATETIME,
+        ExpiredDate DATETIME,
+        CompleteDate DATETIME,
+        Status INT,
+        SendType INT,
+        ProsessRoleId INT,
+        UserSendStatus INT,
+        UserReceiveStatus INT
+    );
+
+    SET @dinamic_sql_02 = N'';
+    SET @dinamic_sql_02 = N'
+        TRUNCATE TABLE #UserIncomingDocNoFilter;
+        INSERT #UserIncomingDocNoFilter
+        (
+            Id,
+            IncomingDocId,
+            UserSend,
+            UserSendName,
+            UserSendRoleId,
+            UserReceive,
+            UserReceiveName,
+            UserReceiveRoleId,
+            ReceiveRoleId,
+            ReceiveRoleUnitName,
+            SendDate,
+            ReadDate,
+            ExpiredDate,
+            CompleteDate,
+            Status,
+            SendType,
+            ProsessRoleId,
+            UserSendStatus,
+            UserReceiveStatus
+        )
+        SELECT uid.Id,
+               uid.IncomingDocId,
+               uid.UserSend,
+               uid.UserSendName,
+               uid.UserSendRoleId,
+               uid.UserReceive,
+               uid.UserReceiveName,
+               uid.UserReceiveRoleId,
+               uid.ReceiveRoleId,
+               uid.ReceiveRoleUnitName,
+               uid.SendDate,
+               uid.ReadDate,
+               uid.ExpiredDate,
+               uid.CompleteDate,
+               uid.Status,
+               uid.SendType,
+               uid.ProsessRoleId,
+               uid.UserSendStatus,
+               uid.UserReceiveStatus
+        FROM edoc.UserIncomingDoc (NOLOCK) uid
+            INNER JOIN edoc.IncomingDoc (NOLOCK) id
+                ON id.Id = uid.IncomingDocId 
+        where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' ';
 
 
     SET @where_clause
@@ -373,31 +491,58 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
     END;
     ELSE IF @DocumentType = 2 --- "Văn bản đến - Văn bản trả lại",
     BEGIN
-        SET @where_clause = @where_clause + N'  and  id.Status =1 and ReturnStatus =1  ';
+        SET @where_clause = @where_clause + N'  and  id.Status = 21 ';
     END;
     --IF @RoleCode = 'ThuKyTongHop' - @RoleCode = 'LanhDaoBo' Thư ký tổng hợp Thư ký tổng hợp / Lãnh đạo Bộ
     ELSE IF @DocumentType = 14 ---  "Văn bản đến - Mời họp",",
     BEGIN
-
-        -- EXEC (@dinamic_sql_01);
         IF @RoleCode = 'ThuKyTongHop'
             SET @where_clause
                 = @where_clause
-                  + N' and   id.Status =2 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') ';
+                  + N' and id.Status = 2 and id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') ';
         ELSE IF @RoleCode = 'LanhDaoVPBo'
             SET @where_clause
                 = @where_clause
-                  + N' and id.Status =3 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') ';
+                  + N' and id.Status = 3 and id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') ';
+        ELSE IF @RoleCode = 'ThuKyLanhDaoBo'
+            BEGIN
+                EXEC (@dinamic_sql_02);
 
+                SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
+                FROM dbo.RoleOfStaff AS ros
+                JOIN dbo.Role AS r ON ros.RoleId = r.Id
+                WHERE r.Code = 'LanhDaoBo'
+                AND ros.DepartmentId IN (
+                    SELECT DepartmentId
+                    FROM dbo.RoleOfStaff
+                    WHERE StaffId = @UserId
+                    AND RoleId = @RoleId
+                )
+
+                SET @where_clause
+                    = @where_clause
+                      + N' and id.Status = 31 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')
+                      AND EXISTS (
+                          SELECT 1
+                          FROM #UserIncomingDocNoFilter tno
+                          WHERE tno.IncomingDocId = id.Id
+                            AND tno.UserReceive = ' + CAST(@UserReceive AS NVARCHAR(10)) + N'
+                            AND tno.UserReceiveRoleId = ' + CAST(@UserReceiveRoleId AS NVARCHAR(10)) + N'
+                            AND tno.Status IN (1,2,9)
+                      ) ';
+            END
         ELSE IF @RoleCode = 'LanhDaoBo'
-            SET @where_clause
-                = @where_clause
-                  + N'  and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') ';
+            BEGIN
+                EXEC (@dinamic_sql_01);
+                SET @where_clause
+                    = @where_clause
+                      + N'  and (id.Status = 4 or id.Status = 101 or id.Status = 31) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')
+                      and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2,9)) ';
+            END
 
     END;
     ELSE IF @DocumentType = 15 ---    "Văn bản đến - Phiếu trình",",
     BEGIN
-        -- EXEC (@dinamic_sql_01);
         IF @RoleCode = 'ThuKyTongHop'
             SET @where_clause
                 = @where_clause
@@ -405,12 +550,54 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         ELSE IF @RoleCode = 'LanhDaoVPBo'
             SET @where_clause
                 = @where_clause
-                  + N' and id.Status =3 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'') ';
+                  + N' and id.Status = 3 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'') ';
+        ELSE IF @RoleCode = 'ThuKyLanhDaoBo'
+            BEGIN
+                EXEC (@dinamic_sql_02);
+
+                SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
+                FROM dbo.RoleOfStaff AS ros
+                JOIN dbo.Role AS r ON ros.RoleId = r.Id
+                WHERE r.Code = 'LanhDaoBo'
+                AND ros.DepartmentId IN (
+                    SELECT DepartmentId
+                    FROM dbo.RoleOfStaff
+                    WHERE StaffId = @UserId
+                    AND RoleId = @RoleId
+                )
+
+                SET @where_clause
+                    = @where_clause
+                      + N' and id.Status = 31 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'') 
+                      AND EXISTS (
+                          SELECT 1
+                          FROM #UserIncomingDocNoFilter tno
+                          WHERE tno.IncomingDocId = id.Id
+                            AND tno.UserReceive = ' + CAST(@UserReceive AS NVARCHAR(10)) + N'
+                            AND tno.UserReceiveRoleId = ' + CAST(@UserReceiveRoleId AS NVARCHAR(10)) + N'
+                            AND tno.Status IN (1,2,9)
+                      ) ';
+            END
         ELSE IF @RoleCode = 'LanhDaoBo'
+            BEGIN
+                EXEC (@dinamic_sql_01);
+                SET @where_clause
+                    = @where_clause
+                      + N' and (id.Status = 4 or id.Status = 101 or id.Status = 31) and id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')
+                       and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2,9)) ';
+            END
+    END;
+    ELSE IF @DocumentType = 17 ---    "Văn bản đến - Thông báo",",
+    BEGIN
+        IF @RoleCode = 'LanhDaoBo'
+        BEGIN
+            EXEC (@dinamic_sql_01);
             SET @where_clause
                 = @where_clause
-                  + N' and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'') ';
-    END;
+                    + N' and id.Status = 31 and id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')
+                    and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2,9)) ';
+        END
+    END
     --Lãnh đạo Văn phòng Bộ / Thư ký lãnh đạo Bộ Lãnh đạo hành chính	
     --IF @RoleCode = 'LanhDaoBo'
     --IF @RoleCode = 'LanhDaoVPBo' 
@@ -424,23 +611,23 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =2 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') 
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
         ELSE IF @RoleCode = 'LanhDaoVPBo'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =3 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
         ELSE IF @RoleCode = 'LanhDaoBo'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
     ELSE IF @DocumentType = 150 ----Trình mới - Phiếu trình
@@ -450,23 +637,23 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =2 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'') 
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
         ELSE IF @RoleCode = 'LanhDaoVPBo'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =3 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
         ELSE IF @RoleCode = 'LanhDaoBo'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
                   + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
-				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ';
+				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
     ELSE IF @DocumentType = 141 --- Đang trình LĐ -  - Mời họp
@@ -531,24 +718,21 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
     BEGIN
         EXEC (@dinamic_sql_01);
         SET @where_clause
-            = @where_clause
-              + N'  and  id.NeedFollow  =1 and id.Status not in (-1) and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) ';
+            = @where_clause + N'  and ISNULL(id.NeedFollow,0) =1 and id.Status not in (-1,0) and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) ';
     END;
     ELSE IF @DocumentType = 31 ---       "VB đến - Cần theo dõi quá hạn",,
     BEGIN
 
         EXEC (@dinamic_sql_01);
         SET @where_clause
-            = @where_clause
-              + N'  and  id.NeedFollow  =1 and id.Status not in (-1)  and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) and id.ExpiredDate is not null and   id.ExpiredDate < Getdate() ';
+            = @where_clause + N'  and  and ISNULL(id.NeedFollow,0) =1  and id.Status not in (-1,0)  and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) and id.ExpiredDate is not null and   id.ExpiredDate < Getdate() ';
     END;
     ELSE IF @DocumentType = 32 ---   "VB đến - Cần theo dõi trong hạn",,
     BEGIN
 
         EXEC (@dinamic_sql_01);
         SET @where_clause
-            = @where_clause
-              + N'  and  id.NeedFollow  =1 and id.Status not in (-1)  and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) and ( id.ExpiredDate is  null or (id.ExpiredDate is not null and   id.ExpiredDate > Getdate()))  ';
+            = @where_clause + N'  and  and ISNULL(id.NeedFollow,0) =1  and id.Status not in (-1,0)  and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) and ( id.ExpiredDate is  null or (id.ExpiredDate is not null and   id.ExpiredDate > Getdate()))  ';
     END;
     -- CHUNG 
     ELSE IF @DocumentType = 4 ----Đang trình LĐ 
@@ -556,16 +740,22 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
 
         EXEC (@dinamic_sql_01);
         SET @where_clause
-            = @where_clause + N' and id.Status =4 and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t  ) )  ';
+            = @where_clause + N' and id.Status =4 and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t  )  ';
 
     END;
 
 
     ELSE IF @DocumentType = -11 ---   "VB đến - Tu choi tiep nhan",",
     BEGIN
+        EXEC (@dinamic_sql_01);
+        SET @where_clause = @where_clause + N'    and  id.Status = -1  '; --- and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t 
+    END;
+    ELSE IF @DocumentType = -12 --- Văn bản đến - bi tu choi",
+    BEGIN
+        --EXEC (@dinamic_sql_01);
         SET @where_clause
             = @where_clause
-              + N'    and  id.Status <> -1 and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t where t.status = 11 ) ';
+              + N' and  id.Id in ( SELECT id.Id FROM edoc.IncomingDoc (NOLOCK) cid WHERE cid.Status = -1 AND cid.ParentId = id.Id) ';
     END;
     ELSE IF @DocumentType = -13 ---   "VB đến - Không vào sổ",",
     BEGIN
@@ -576,11 +766,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         --EXEC (@dinamic_sql_01);
         SET @where_clause = @where_clause + N'    and  id.Status = 10 ';
     END;
-    ELSE IF @DocumentType = -12 --- Văn bản đến - bi tu choi",
-    BEGIN
-        --EXEC (@dinamic_sql_01);
-        SET @where_clause = @where_clause + N'    and  id.Status = -1 ';
-    END;
+
     ELSE IF @DocumentType = 11 --- Văn bản đến - uyr quyeenf",
     BEGIN
         --EXEC (@dinamic_sql_01);
@@ -600,36 +786,36 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         IF @RoleCode = 'VanThuBo'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status in (0,1)   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and (id.Status in (0,1)   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'ThuKyTongHop'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status =2   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and (id.Status =2   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoBo'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status =4   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and (id.Status =4   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoVPBo'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status =3   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and (id.Status =3   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
 
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N'  and (id.Status =5  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N'  and (id.Status =5  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoDonVi'
             SET @where_clause
                 = @where_clause
-                  + N' and(id.Status =6   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and(id.Status =6   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoTrungTam'
             SET @where_clause
                 = @where_clause
-                  + N' and(id.Status = 7  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and(id.Status = 7  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE
             SET @where_clause
                 = @where_clause
-                  + N' and( id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (0,1,2)) ) ';
+                  + N' and( id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
     END;
     ELSE IF @DocumentType = 8 ---  "Văn bản đến - Bi thu hoi"
     BEGIN
@@ -638,7 +824,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         SET @where_clause = @where_clause + N'    ';
         SET @where_clause
             = @where_clause
-              + N'  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status = -1 and UserReceive ='
+              + N'  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status = 4 and UserReceive ='
               + CONVERT(NVARCHAR(20), @UserId) + N'   )  ';
     END;
     ELSE IF @DocumentType = 7 ---  "Văn bản đến - thu hoi"
@@ -648,7 +834,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         SET @where_clause = @where_clause + N'    ';
         SET @where_clause
             = @where_clause
-              + N'  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status = -1 and UserSend ='
+              + N'  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status = 4 and UserSend ='
               + CONVERT(NVARCHAR(20), @UserId) + N' )  ';
     END;
     ELSE
@@ -657,13 +843,39 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         EXEC (@dinamic_sql_01);
         --
         --
-        SET @where_clause = @where_clause + N'      and id.Status <> -1 ';
+        SET @where_clause = @where_clause + N'      and id.Status not in ( -1,0) ';
 
         --IF @RoleCode IN ( 'VanThuBo', 'VanThuDonVi', 'LanhDaoBo', 'ThuKyLanhDaoBo', 'LanhDaoVPBo', 'LanhDaoDonVi',
         --                  'LanhDaoPhong', 'LanhDaoTrungTam', 'ThuKyTongHop'
         --                )
         --    SET @where_clause = @where_clause + N'      and id.Status <> -1 ';
         --ELSE
+        IF @RoleCode = 'ThuKyLanhDaoBo'
+        BEGIN
+            EXEC (@dinamic_sql_02);
+
+            SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
+            FROM dbo.RoleOfStaff AS ros
+            JOIN dbo.Role AS r ON ros.RoleId = r.Id
+            WHERE r.Code = 'LanhDaoBo'
+            AND ros.DepartmentId IN (
+                SELECT DepartmentId
+                FROM dbo.RoleOfStaff
+                WHERE StaffId = @UserId
+                AND RoleId = @RoleId
+            )
+
+            SET @where_clause
+                = @where_clause
+                    + N' AND EXISTS (
+                        SELECT 1
+                        FROM #UserIncomingDocNoFilter tno
+                        WHERE tno.IncomingDocId = id.Id
+                        AND tno.UserReceive = ' + CAST(@UserReceive AS NVARCHAR(10)) + N'
+                        AND tno.UserReceiveRoleId = ' + CAST(@UserReceiveRoleId AS NVARCHAR(10)) + N'
+                    ) ';
+        END
+        ELSE
         BEGIN
 
             SET @where_clause
@@ -687,10 +899,10 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
             = @where_clause_01 + N'	AND CONVERT(date, id.PublishDate) <= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @EndDate) + N''') ';
     END;
-    IF @unitSend <> ''
+    IF @PublishUnit <> ''
     BEGIN
         SET @where_clause_01
-            = @where_clause_01 + N'	AND id.unitSend LIKE N''%'    + CONVERT(NVARCHAR(20), @unitSend) + N'%'' ';
+            = @where_clause_01 + N'	AND id.PublishUnit LIKE N''%'    + CONVERT(NVARCHAR(20), @PublishUnit) + N'%'' ';
     END;
     IF @DocBookId > 0
     BEGIN
@@ -719,44 +931,62 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
         SET @where_clause_01
             = @where_clause_01 + N'	AND id.Abstract LIKE N''%'    + CONVERT(NVARCHAR, @Abstract) + N'%'' ';
     END;
+
     IF @Signer <> ''
     BEGIN
         SET @where_clause_01
             = @where_clause_01 + N'	AND id.Signer LIKE N''%'    + CONVERT(NVARCHAR(20), @Signer) + N'%'' ';
     END;
+
     IF @Recipients <> ''
     BEGIN
         SET @where_clause_01
             = @where_clause_01 + N'	AND id.Recipients LIKE N''%'    + CONVERT(NVARCHAR, @Recipients) + N'%'' ';
-
     END;
+
+
+
     IF @PresideRecipient <> ''
     BEGIN
         SET @where_clause_01
-            = @where_clause_01 + N'	AND id.LeaderRecipient LIKE N''%'    + @PresideRecipient + N'%'' ';
-
-    END;
-    IF @CoordinatedRecipient <> ''
-    BEGIN
-        SET @where_clause_01
             = @where_clause_01 + N'	AND id.PresideRecipient LIKE N''%'    + @PresideRecipient + N'%'' ';
-
     END;
+
     IF @CoordinatedRecipient <> ''
     BEGIN
         SET @where_clause_01
-            = @where_clause_01 + N'	AND id.CoordinatedRecipient LIKE N''%'    + @PresideRecipient + N'%'' ';
-
+            = @where_clause_01 + N'	AND id.CoordinatedRecipient LIKE N''%'    + @CoordinatedRecipient + N'%'' ';
     END;
+
+    IF @PresideRecipientCode <> ''
+    BEGIN
+        SET @where_clause_01
+            = @where_clause_01 + N'	AND id.PresideRecipientCode LIKE N''%'    + @PresideRecipientCode + N'%'' ';
+    END;
+
+    IF @CoordinatedRecipientCode <> ''
+    BEGIN
+        SET @where_clause_01
+            = @where_clause_01 + N'	AND id.CoordinatedRecipientCode LIKE N''%'    + @CoordinatedRecipientCode + N'%'' ';
+    END;
+
     IF @DraftUnitName <> ''
     BEGIN
         SET @where_clause_01 = @where_clause_01 + N'	AND id.DraftUnitName LIKE N''%' + @DraftUnitName + N'%'' ';
-
     END;
+
     IF @LeaderName <> ''
     BEGIN
         SET @where_clause_01 = @where_clause_01 + N'	AND id.MeetingMaster LIKE N''%' + @LeaderName + N'%'' ';
-
+    END;
+    IF @LeaderRecipient <> ''
+    BEGIN
+        SET @where_clause_01 = @where_clause_01 + N'	AND id.LeaderRecipient LIKE N''%' + @LeaderRecipient + N'%'' ';
+    END;
+    IF @LeaderRecipientSuggest <> ''
+    BEGIN
+        SET @where_clause_01
+            = @where_clause_01 + N'	AND id.LeaderRecipientSuggest LIKE N''%'    + @LeaderRecipientSuggest + N'%'' ';
     END;
     IF @StartReceivedDate IS NOT NULL
     BEGIN
@@ -765,6 +995,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
               + N'	and id.ReceivedDate is not null AND CONVERT(date, id.ReceivedDate) >= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @StartReceivedDate) + N''') ';
     END;
+
     IF @EndReceivedDate IS NOT NULL
     BEGIN
         SET @where_clause_01
@@ -780,6 +1011,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
               + N'	and id.ExpiredDate is not null AND CONVERT(date, id.ExpiredDate) >= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @StartExpiredDate) + N''') ';
     END;
+
     IF @EndExpiredDate IS NOT NULL
     BEGIN
         SET @where_clause_01
@@ -787,6 +1019,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
               + N'	and id.ExpiredDate is not null  AND CONVERT(date, id.ExpiredDate) <= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @EndExpiredDate) + N''') ';
     END;
+
     IF @StartMeetingDate IS NOT NULL
     BEGIN
         SET @where_clause_01
@@ -794,6 +1027,7 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
               + N'	and id.MeetingStartDate is not null AND CONVERT(date, id.MeetingStartDate) >= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @StartMeetingDate) + N''') ';
     END;
+
     IF @EndMeetingDate IS NOT NULL
     BEGIN
         SET @where_clause_01
@@ -801,10 +1035,12 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
               + N'	and id.MeetingStartDate is not null  AND CONVERT(date, id.MeetingStartDate) <= CONVERT(date, '''
               + CONVERT(NVARCHAR(20), @EndMeetingDate) + N''') ';
     END;
+
     IF @UrgentId > 0
     BEGIN
         SET @where_clause_01 = @where_clause_01 + N'	AND id.UrgentId = ' + CONVERT(NVARCHAR(20), @UrgentId);
     END;
+
     IF @UrgentId > 0
     BEGIN
         SET @where_clause_01 = @where_clause_01 + N'	AND id.UrgentId = ' + CONVERT(NVARCHAR(20), @UrgentId);
@@ -822,13 +1058,19 @@ where    id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N' and ( uid.SendType 
     --@UserStatusId INT ,
 
     --
-    -- Build order by clause
+    -- Build 4 clause
     --
+
+    IF ISNULL(@SortOrder, '') = ''
+        SET @SortOrder = 'ReceivedDate';
+    --IF ISNULL(@SortOrder, '') = ''
+    --    SET @SortOrder = 'DESC';
+
     SET @order_by_clause = N'';
     SET @order_by_clause
-        = @order_by_clause + N'ORDER BY   id.ReceivedDate  DESC, ISNULL(id.Number, 99999) DESC OFFSET '
-          + CONVERT(NVARCHAR(20), @PageLowerBound) + N' ROWS FETCH NEXT ' + CONVERT(NVARCHAR(20), @PageSize)
-          + N' ROWS ONLY ';
+        = @order_by_clause + N'ORDER BY   id.' + @SortOrder + N' ' + @SortDirection
+          + N'   , ISNULL(id.Number, 99999) DESC OFFSET ' + CONVERT(NVARCHAR(20), @PageLowerBound)
+          + N' ROWS FETCH NEXT ' + CONVERT(NVARCHAR(20), @PageSize) + N' ROWS ONLY ';
 
     --
     -- Count incoming document by where clause
@@ -1044,6 +1286,7 @@ FROM edoc.IncomingDoc (NOLOCK) id
     --execute sp_executesql @dinamic_sql;
     EXEC (@dinamic_sql);
     PRINT @dinamic_sql;
+
     IF OBJECT_ID('tempdb..#HandlingDocLink') IS NOT NULL
         DROP TABLE #HandlingDocLink;
     CREATE TABLE #HandlingDocLink (DocId BIGINT, Status INT);
@@ -1162,6 +1405,17 @@ FROM edoc.IncomingDoc (NOLOCK) id
                ELSE
                    N'' -- hoặc NULL, tùy bạn muốn
            END AS FormularName,
+		   CASE WHEN  @DocumentType = 2  THEN
+			( SELECT TOP 1 op.Opinion FROM edoc.OpinionIncomingDoc (NOLOCK ) op WHERE op.IncomingDocId =id.Id AND op.Status =7 ORDER BY op.id DESC) 
+			 WHEN  @DocumentType = -11  THEN
+			( SELECT TOP 1 op.Opinion FROM edoc.OpinionIncomingDoc (NOLOCK ) op WHERE op.IncomingDocId =id.Id AND op.Status =11 ORDER BY op.id DESC) 
+			 WHEN  @DocumentType = -12  THEN
+			( SELECT TOP 1 op.Opinion FROM edoc.OpinionIncomingDoc (NOLOCK ) op WHERE ( op.IncomingDocId =id.Id OR  id.Id in ( SELECT id.Id FROM edoc.IncomingDoc (NOLOCK) cid WHERE cid.Status = -1 AND cid.ParentId = id.Id) ) AND op.Status =11  ORDER BY op.id DESC) 
+			 WHEN  @DocumentType = -13  THEN
+			( SELECT TOP 1 op.Opinion FROM edoc.OpinionIncomingDoc (NOLOCK ) op WHERE op.IncomingDocId =id.Id AND op.Status =12  ORDER BY op.id DESC) 
+			 ELSE
+                   N'' -- hoặc NULL, tùy bạn muốn
+           END AS LastOpinion,
            --- ISNULL((SELECT MAX(uid.UserIncomingDocId)FROM #UserIncomingDoc2 uid WHERE uid.IncomingDocId = id.Id), 0) UserIncomingDocId,
 
            --IIF(EXISTS (SELECT 1 FROM #HandlingDocLink hldl WHERE hldl.Status <> -1 AND hldl.DocId = id.Id), 1, 0) HasHandling,
