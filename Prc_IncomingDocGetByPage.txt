@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByPage]    Script Date: 10/23/2025 9:34:51 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByPage]    Script Date: 10/23/2025 6:05:37 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -470,7 +470,7 @@ BEGIN
         = N' WHERE ISNULL(id.IsDeleted, 0)  <> 1  and  id.UnitId = ' + CONVERT(NVARCHAR(20), @UnitId) + N'    ';
 
     IF @RoleCode NOT IN ( 'VanThuBo', 'VanThuDonVi', 'LanhDaoBo', 'ThuKyLanhDaoBo', 'LanhDaoVPBo', 'LanhDaoDonVi',
-                          'LanhDaoPhong', 'LanhDaoTrungTam', 'ThuKyTongHop', 'LanhDaoHanhChinh', 'ChuyenVien'
+                          'LanhDaoPhong', 'LanhDaoTrungTam', 'ThuKyTongHop'
                         )
         SET @where_clause = @where_clause + N'      and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t ) ';
     --IF @RoleCode = 'VanThuBo'
@@ -487,14 +487,7 @@ BEGIN
     END;
     ELSE IF @DocumentType = 1 --  "Văn bản đến - Đã vào sổ",
     BEGIN
-        IF @RoleCode = 'VanThuDonVi'
-        BEGIN
-            SET @where_clause = @where_clause + N' and (id.Status = 1 or id.Status = 5 or id.Status = 6 or id.Status = 7 or id.Status = 9) ';
-        END
-        ELSE
-        BEGIN
-            SET @where_clause = @where_clause + N'    and  id.Status = 1 ';
-        END
+        SET @where_clause = @where_clause + N'    and  id.Status = 1 ';
     END;
     ELSE IF @DocumentType = 2 --- "Văn bản đến - Văn bản trả lại",
     BEGIN
@@ -633,7 +626,7 @@ BEGIN
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status = 5 or id.Status = 6 or id.Status = 7 or id.Status = 9) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
+                  + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'')  
 				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
@@ -659,7 +652,7 @@ BEGIN
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status = 5 or id.Status = 6 or id.Status = 7 or id.Status = 9) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
+                  + N' and id.Status =5 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')  
 				  and id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ';
 
     END;
@@ -669,7 +662,7 @@ BEGIN
         EXEC (@dinamic_sql_01);
         SET @where_clause
             = @where_clause
-              + N' and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') 
+              + N' and id.Status in (4,6) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') = N''MH'') 
 			  ';
 
     END;
@@ -679,7 +672,7 @@ BEGIN
         EXEC (@dinamic_sql_01);
         SET @where_clause
             = @where_clause
-              + N' and id.Status =4 and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')
+              + N' and id.Status in (4,6) and  id.DocBookId in (SELECT dbock.Id FROM edoc.DocBook (NOLOCK) dbock WHERE dbock.TypeId =1 AND ISNULL(dbock.TypeCode, N'''') <> N''MH'')
 			   ';
 
     END;
@@ -706,8 +699,11 @@ BEGIN
     --Văn bản đến 	Lãnh đạo đơn vị / Lãnh đạo trung tâm / Lãnh đạo phòng
     ELSE IF @DocumentType = 16
     BEGIN
-        IF @RoleCode = 'LanhDaoDonVi' or @RoleCode = 'LanhDaoTrungTam' OR @RoleCode = 'LanhDaoPhong'
-            SET @where_clause = @where_clause + N' and (id.Status = 5 or id.Status = 6 or id.Status = 7 or id.Status = 9)   ';
+        IF @RoleCode = 'LanhDaoDonVi'
+            SET @where_clause = @where_clause + N' and id.Status =6   ';
+        ELSE IF @RoleCode = 'LanhDaoTrungTam'
+                OR @RoleCode = 'LanhDaoPhong'
+            SET @where_clause = @where_clause + N' and id.Status = 7  ';
 
     END;
     --IF @RoleCode = 'LanhDaoDonVi'
@@ -744,7 +740,7 @@ BEGIN
 
         EXEC (@dinamic_sql_01);
         SET @where_clause
-            = @where_clause + N' and id.Status =4 and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t  )  ';
+            = @where_clause + N' and id.Status in (4,6) and  id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t  )  ';
 
     END;
 
@@ -807,23 +803,19 @@ BEGIN
         ELSE IF @RoleCode = 'LanhDaoHanhChinh'
             SET @where_clause
                 = @where_clause
-                  + N'  and (id.Status =5  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
+                  + N'  and (id.Status in (5,6)  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoDonVi'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status =6   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
+                  + N' and(id.Status in (5,6)   or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE IF @RoleCode = 'LanhDaoTrungTam'
             SET @where_clause
                 = @where_clause
-                  + N' and (id.Status = 7  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
-        ELSE IF @RoleCode = 'ChuyenVien'
-            SET @where_clause
-                = @where_clause
-                  + N' and (id.Status = 5 or id.Status = 6 or id.Status = 7 or id.Status = 9 or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
+                  + N' and(id.Status = 7  or id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
         ELSE
             SET @where_clause
                 = @where_clause
-                  + N' and ( id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
+                  + N' and( id.Id IN (SELECT IncomingDocId FROM #UserIncomingDoc t WHERE t.Status in (1,2)) ) ';
     END;
     ELSE IF @DocumentType = 8 ---  "Văn bản đến - Bi thu hoi"
     BEGIN
@@ -1292,10 +1284,6 @@ FROM edoc.IncomingDoc (NOLOCK) id
 
     SET @dinamic_sql = @dinamic_sql + @where_clause + @where_clause_01 + @order_by_clause;
     --execute sp_executesql @dinamic_sql;
-
-    --INSERT INTO [edoc].[ProcessLog] (LogStoreId, StepDescription, LogMessage)
-    --    VALUES (NEWID(), N'@dinamic_sql', @dinamic_sql);
-
     EXEC (@dinamic_sql);
     PRINT @dinamic_sql;
 
