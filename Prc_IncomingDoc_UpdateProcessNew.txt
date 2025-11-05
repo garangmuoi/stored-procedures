@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNewDebug]    Script Date: 10/23/2025 4:15:03 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 11/5/2025 4:42:43 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -256,16 +256,14 @@ BEGIN
 					IF @ReadDate IS NULL -- Chưa đọc
 					BEGIN
 						UPDATE edoc.UserIncomingDoc 
-						SET 
-							Status = @UserIncomingDocStatus
+						SET Status = @UserIncomingDocStatus, ModifiedDate = @current_date, ModifiedUserId = @UserId
 						WHERE Id = @UserIncomingDocId
 					END
 				END
 				ELSE
 				BEGIN
 					UPDATE edoc.UserIncomingDoc 
-					SET 
-						Status = @UserIncomingDocStatus
+					SET Status = @UserIncomingDocStatus, ModifiedDate = @current_date, ModifiedUserId = @UserId
 					WHERE Id = @UserIncomingDocId
 				END
 			END
@@ -273,16 +271,14 @@ BEGIN
 			IF @UserIncomingDocStatus = 9 -- Hoàn thành
 			BEGIN
 				UPDATE edoc.UserIncomingDoc 
-				SET 
-					CompleteDate = @current_date 
+				SET CompleteDate = @current_date, ModifiedDate = @current_date, ModifiedUserId = @UserId
 				WHERE Id = @UserIncomingDocId
 			END
 
 			IF @OpinionStatus = 6 AND @ReadDate IS NULL -- Chưa đọc
 			BEGIN
 				UPDATE edoc.UserIncomingDoc 
-				SET 
-					ReadDate = @current_date 
+				SET ReadDate = @current_date, ModifiedDate = @current_date, ModifiedUserId = @UserId
 				WHERE Id = @UserIncomingDocId
 			END
 		END
@@ -334,22 +330,19 @@ BEGIN
 					UserSend,
 					UserSendName,
 					UserSendRoleId,
-					--UserReceive,
 					UserReceiveName,
-					--UserReceiveRoleId,
 					ReceiveRoleId,
 					ReceiveRoleUnitName,
 					SendDate,
 					ReadDate,
 					ExpiredDate,
-					--CompleteDate,
 					Status,
 					SendType,
 					ProsessRoleId,
 					UserSendStatus,
-					UserReceiveStatus
-					--Note,
-					--ProsessNote
+					UserReceiveStatus,
+					ModifiedDate,
+					ModifiedUserId
 				)
 				VALUES
 				(
@@ -357,22 +350,19 @@ BEGIN
 					@UserId,
 					(SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.Staff WITH (NOLOCK) WHERE Id = @UserId),
 					@RoleId,
-					--@UserReceive,
 					@ReceiveRoleName,
-					--@UserReceiveRoleId,
 					@ReceiveRoleId,
 					@ReceiveRoleUnitName,
 					@current_date,
 					IIF(@OpinionStatus = 0, @current_date, NULL),
 					@ExpiredDate,
-					--@CompleteDate,
 					@TransferUserIncomingDocStatus,
 					@SendType,
 					@ProsessRoleId,
 					@UserSendStatus,
-					@IncomingDocStatus
-					--@Note,
-					--@ProsessNote
+					@IncomingDocStatus,
+					@current_date,
+					@UserId
 				);
 				
 				SET @UserIncomingDocId = SCOPE_IDENTITY();
@@ -382,7 +372,7 @@ BEGIN
 				IF @TransferUserIncomingDocStatus IS NOT NULL
 				BEGIN
 					UPDATE edoc.UserIncomingDoc 
-					SET Status = @TransferUserIncomingDocStatus
+					SET Status = @TransferUserIncomingDocStatus, ModifiedDate = @current_date, ModifiedUserId = @UserId
 					WHERE Id = @UserIncomingDocId;
 				END
             END
@@ -444,6 +434,22 @@ BEGIN
 
 				IF @UserIncomingDocId IS NULL
 				BEGIN
+					SET @ReceiveRoleUnitId = (
+						SELECT TOP 1 UnitId
+						FROM dbo.Role WITH (NOLOCK)
+						WHERE Id = @RecipientRoleId
+					);
+
+					-- Lấy Tên đơn vị
+					IF @ReceiveRoleUnitId IS NOT NULL
+					BEGIN
+						SET @ReceiveRoleUnitName = (
+							SELECT TOP 1 Name
+							FROM dbo.Department WITH (NOLOCK)
+							WHERE Id = @ReceiveRoleUnitId
+						);
+					END
+
 					-- Insert vào UserIncomingDoc
 					INSERT INTO edoc.UserIncomingDoc
 					(
@@ -454,13 +460,16 @@ BEGIN
 						UserReceive,
 						UserReceiveName,
 						UserReceiveRoleId,
+						ReceiveRoleUnitName,
 						SendDate,
 						ExpiredDate,
 						Status,
 						SendType,
 						ProsessRoleId,
 						UserSendStatus,
-						UserReceiveStatus
+						UserReceiveStatus,
+						ModifiedDate,
+						ModifiedUserId
 					)
 					VALUES
 					(
@@ -471,13 +480,16 @@ BEGIN
 						@RecipientId,
 						@RecipientName,
 						@RecipientRoleId,
+						@ReceiveRoleUnitName,
 						@current_date,
 						@RecipientExpiredDate,
 						@TransferUserIncomingDocStatus,
 						@SendType,
 						@RecipientProsessRoleId,
 						@UserSendStatus,
-						@IncomingDocStatus
+						@IncomingDocStatus,
+						@current_date,
+						@UserId
 					);
 
 					-- Lấy ID vừa insert
@@ -492,7 +504,9 @@ BEGIN
 						UserReceiveRoleId = @RecipientRoleId,
 						ExpiredDate = @RecipientExpiredDate,
 						Status = @TransferUserIncomingDocStatus,
-						ProsessRoleId = @RecipientProsessRoleId
+						ProsessRoleId = @RecipientProsessRoleId, 
+						ModifiedDate = @current_date, 
+						ModifiedUserId = @UserId
                     WHERE Id = @UserIncomingDocId
                 END
 
