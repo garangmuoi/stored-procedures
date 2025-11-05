@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-
+/****** Object:  StoredProcedure [management].[Prc_WorkSchedule_GetByPageFilter]    Script Date: 11/5/2025 10:54:11 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -22,6 +22,7 @@ ALTER PROCEDURE [management].[Prc_WorkSchedule_GetByPageFilter]
     @LeaderId INT = NULL,
     @Content NVARCHAR(MAX) = NULL,
     @Week INT = NULL,
+    @Month INT = NULL,
     @Year INT = NULL,
     @Status INT = NULL,
     @IsPublishToUnit BIT = NULL
@@ -81,6 +82,13 @@ BEGIN
                     OR (
                         DATEPART(WEEK, ws.MeetingDateFrom) = @Week 
                         AND DATEPART(WEEK, ws.MeetingDateTo) = @Week
+                    )
+                )
+                AND (
+                    @Month IS NULL 
+                    OR (
+                        DATEPART(MONTH, ws.MeetingDateFrom) = @Month 
+                        AND DATEPART(MONTH, ws.MeetingDateTo) = @Month
                     )
                 )
                 AND (
