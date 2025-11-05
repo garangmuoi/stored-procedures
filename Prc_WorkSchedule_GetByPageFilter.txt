@@ -1,0 +1,183 @@
+USE [DHTN-2025]
+GO
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+-- =============================================
+-- Author:		Trần Đức Bình
+-- Create date:	04-11-2025
+-- Description:	
+-- =============================================
+ALTER PROCEDURE [management].[Prc_WorkSchedule_GetByPageFilter]
+    @PageIndex INT,
+    @PageSize INT,
+    @MeetingDateFrom DATETIME,
+    @MeetingDateTo DATETIME,
+    @UnitId INT = NULL,
+    @LeaderId INT = NULL,
+    @Content NVARCHAR(MAX) = NULL,
+    @Week INT = NULL,
+    @Year INT = NULL,
+    @Status INT = NULL,
+    @IsPublishToUnit BIT = NULL
+AS
+BEGIN
+    -- SET NOCOUNT ON added to prevent extra result sets from
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        IF @PageSize is NULL
+		BEGIN
+			SET @PageSize = 10
+		END
+		
+		IF @PageIndex IS NULL
+		BEGIN
+			SET @PageIndex = 0
+		END
+
+		-- All other declarations and initialisation
+		--
+		DECLARE 
+				@PageLowerBound INT,
+				@PageUpperBound INT
+		SELECT	
+				@PageLowerBound = (@PageIndex - 1) * @PageSize,
+				@PageUpperBound = @PageSize - 1 + @PageLowerBound
+
+        /*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+
+		;WITH CTE AS (
+			SELECT COUNT_BIG(1) OVER(PARTITION BY NULL) AS TotalRowCount
+			    ,ws.Id
+                ,ws.UserCreateId
+                ,ws.LeaderId
+                ,ws.Description
+                ,ws.IsDraft
+                ,ws.MeetingDateFrom
+                ,ws.MeetingDateTo
+                ,ws.MeetingLocation
+                ,ws.MeetingHostUser
+                ,ws.MainHostId
+                ,ws.IsMainHost
+                ,ws.AttendParticipant
+                ,ws.Participant
+                ,ws.PreparationTasks
+                ,ws.IsPublishToMinistry
+                ,ws.IsPublishToUnit
+                ,ws.NoticeTypeValue
+                ,ws.OthersRequirement
+                ,ws.Status
+                ,ws.CancelReason
+                ,CAST(s.FirstName + ' ' + s.LastName AS NVARCHAR(200)) AS DisplayName
+			FROM management.WorkSchedule as ws
+            LEFT JOIN management.WorkScheduleRelatedUnit as ru on ws.Id = ru.WorkScheduleId
+            LEFT JOIN dbo.Staff as s on ws.LeaderId = s.Id
+			WHERE
+                (
+					(@MeetingDateFrom IS NULL AND @MeetingDateTo IS NULL)
+					OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NULL AND ws.MeetingDateFrom >= @MeetingDateFrom)
+					OR (@MeetingDateFrom IS NULL AND @MeetingDateTo IS NOT NULL AND ws.MeetingDateTo < @MeetingDateTo)
+					OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NOT NULL AND 
+						(
+							(ws.MeetingDateFrom >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
+							OR (ws.MeetingDateTo >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
+						)
+					)
+				)
+                AND (@UnitId IS NULL OR ru.RelatedUnitId = @UnitId)
+                AND (@LeaderId IS NULL OR ws.LeaderId = @LeaderId)
+                AND (@Status IS NULL OR ws.[Status] = @Status)
+                AND (@IsPublishToUnit IS NULL OR ws.IsPublishToUnit = @IsPublishToUnit)
+                AND (@Content IS NULL OR ws.Description LIKE N'%' + @Content + N'%')
+                AND (
+					@Week IS NULL 
+					OR (
+						DATEPART(WEEK, ws.MeetingDateFrom) = @Week 
+						AND DATEPART(WEEK, ws.MeetingDateTo) = @Week
+					)
+				)
+				AND (
+					@Year IS NULL 
+					OR (
+						YEAR(ws.MeetingDateFrom) = @Year 
+						AND YEAR(ws.MeetingDateTo) = @Year
+					)
+				)
+		    )
+			SELECT Distinct
+                Id
+                ,UserCreateId
+                ,LeaderId
+                ,Description
+                ,IsDraft
+                ,MeetingDateFrom
+                ,MeetingDateTo
+                ,MeetingLocation
+                ,MeetingHostUser
+                ,MainHostId
+                ,IsMainHost
+                ,AttendParticipant
+                ,Participant
+                ,PreparationTasks
+                ,IsPublishToMinistry
+                ,IsPublishToUnit
+                ,NoticeTypeValue
+                ,OthersRequirement
+                ,Status
+                ,CancelReason
+                ,DisplayName                
+                ,TotalRowCount
+            FROM CTE
+			ORDER BY LeaderId OFFSET @PageLowerBound ROWS FETCH NEXT @PageSize ROWS ONLY;
+	   
+		/*******************************************************************************
+		* End of SQL statment(s).
+		*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        -- Assign variables to error-handling functions that capture information for RAISERROR.
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        -- Build the message string that will contain original error information.
+        SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ' + ERROR_MESSAGE();
+
+        -- Only set the error state if its been set to zero
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+        RAISERROR(   @ErrorMessage,
+                     @ErrorSeverity,
+                     @ErrorState,
+                     @ErrorNumber,    -- parameter: original error number.
+                     @ErrorSeverity,  -- parameter: original error severity.
+                     @ErrorState,     -- parameter: original error state.
+                     @ErrorProcedure, -- parameter: original error procedure name.
+                     @ErrorLine       -- parameter: original error line number.
+                 );
+    END CATCH;
+
+    SET NOCOUNT OFF;
+END;
+
+
