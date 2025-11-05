@@ -55,89 +55,74 @@ BEGIN
 		* Build up some dynamic SQL to do the search
 		*******************************************************************************/
 
-		;WITH CTE AS (
-			SELECT COUNT_BIG(1) OVER(PARTITION BY NULL) AS TotalRowCount
-			    ,ws.Id
-                ,ws.UserCreateId
-                ,ws.LeaderId
-                ,ws.Description
-                ,ws.IsDraft
-                ,ws.MeetingDateFrom
-                ,ws.MeetingDateTo
-                ,ws.MeetingLocation
-                ,ws.MeetingHostUser
-                ,ws.MainHostId
-                ,ws.IsMainHost
-                ,ws.AttendParticipant
-                ,ws.Participant
-                ,ws.PreparationTasks
-                ,ws.IsPublishToMinistry
-                ,ws.IsPublishToUnit
-                ,ws.NoticeTypeValue
-                ,ws.OthersRequirement
-                ,ws.Status
-                ,ws.CancelReason
-                ,CAST(s.FirstName + ' ' + s.LastName AS NVARCHAR(200)) AS DisplayName
-			FROM management.WorkSchedule as ws
-            LEFT JOIN management.WorkScheduleRelatedUnit as ru on ws.Id = ru.WorkScheduleId
-            LEFT JOIN dbo.Staff as s on ws.LeaderId = s.Id
-			WHERE
+		;WITH Filtered AS (
+            SELECT DISTINCT ws.Id
+            FROM management.WorkSchedule AS ws
+            LEFT JOIN management.WorkScheduleRelatedUnit AS ru ON ws.Id = ru.WorkScheduleId
+            WHERE
                 (
-					(@MeetingDateFrom IS NULL AND @MeetingDateTo IS NULL)
-					OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NULL AND ws.MeetingDateFrom >= @MeetingDateFrom)
-					OR (@MeetingDateFrom IS NULL AND @MeetingDateTo IS NOT NULL AND ws.MeetingDateTo < @MeetingDateTo)
-					OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NOT NULL AND 
-						(
-							(ws.MeetingDateFrom >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
-							OR (ws.MeetingDateTo >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
-						)
-					)
-				)
+                    (@MeetingDateFrom IS NULL AND @MeetingDateTo IS NULL)
+                    OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NULL AND ws.MeetingDateFrom >= @MeetingDateFrom)
+                    OR (@MeetingDateFrom IS NULL AND @MeetingDateTo IS NOT NULL AND ws.MeetingDateTo < @MeetingDateTo)
+                    OR (@MeetingDateFrom IS NOT NULL AND @MeetingDateTo IS NOT NULL AND 
+                        (
+                            (ws.MeetingDateFrom >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
+                            OR (ws.MeetingDateTo >= @MeetingDateFrom AND ws.MeetingDateFrom < @MeetingDateTo)
+                        )
+                    )
+                )
                 AND (@UnitId IS NULL OR ru.RelatedUnitId = @UnitId)
                 AND (@LeaderId IS NULL OR ws.LeaderId = @LeaderId)
                 AND (@Status IS NULL OR ws.[Status] = @Status)
                 AND (@IsPublishToUnit IS NULL OR ws.IsPublishToUnit = @IsPublishToUnit)
                 AND (@Content IS NULL OR ws.Description LIKE N'%' + @Content + N'%')
                 AND (
-					@Week IS NULL 
-					OR (
-						DATEPART(WEEK, ws.MeetingDateFrom) = @Week 
-						AND DATEPART(WEEK, ws.MeetingDateTo) = @Week
-					)
-				)
-				AND (
-					@Year IS NULL 
-					OR (
-						YEAR(ws.MeetingDateFrom) = @Year 
-						AND YEAR(ws.MeetingDateTo) = @Year
-					)
-				)
-		    )
-			SELECT Distinct
-                Id
-                ,UserCreateId
-                ,LeaderId
-                ,Description
-                ,IsDraft
-                ,MeetingDateFrom
-                ,MeetingDateTo
-                ,MeetingLocation
-                ,MeetingHostUser
-                ,MainHostId
-                ,IsMainHost
-                ,AttendParticipant
-                ,Participant
-                ,PreparationTasks
-                ,IsPublishToMinistry
-                ,IsPublishToUnit
-                ,NoticeTypeValue
-                ,OthersRequirement
-                ,Status
-                ,CancelReason
-                ,DisplayName                
-                ,TotalRowCount
-            FROM CTE
-			ORDER BY LeaderId OFFSET @PageLowerBound ROWS FETCH NEXT @PageSize ROWS ONLY;
+                    @Week IS NULL 
+                    OR (
+                        DATEPART(WEEK, ws.MeetingDateFrom) = @Week 
+                        AND DATEPART(WEEK, ws.MeetingDateTo) = @Week
+                    )
+                )
+                AND (
+                    @Year IS NULL 
+                    OR (
+                        YEAR(ws.MeetingDateFrom) = @Year 
+                        AND YEAR(ws.MeetingDateTo) = @Year
+                    )
+                )
+            ),
+            Counted AS (
+                SELECT COUNT(*) AS TotalRowCount FROM Filtered
+            )
+            SELECT 
+                ws.Id,
+                ws.UserCreateId,
+                ws.LeaderId,
+                ws.Description,
+                ws.IsDraft,
+                ws.MeetingDateFrom,
+                ws.MeetingDateTo,
+                ws.MeetingLocation,
+                ws.MeetingHostUser,
+                ws.MainHostId,
+                ws.IsMainHost,
+                ws.AttendParticipant,
+                ws.Participant,
+                ws.PreparationTasks,
+                ws.IsPublishToMinistry,
+                ws.IsPublishToUnit,
+                ws.NoticeTypeValue,
+                ws.OthersRequirement,
+                ws.Status,
+                ws.CancelReason,
+                CAST(s.FirstName + ' ' + s.LastName AS NVARCHAR(200)) AS DisplayName,
+                c.TotalRowCount
+            FROM Filtered f
+            JOIN management.WorkSchedule ws ON f.Id = ws.Id
+            LEFT JOIN dbo.Staff s ON ws.LeaderId = s.Id
+            CROSS JOIN Counted c
+            ORDER BY ws.LeaderId
+            OFFSET @PageLowerBound ROWS FETCH NEXT @PageSize ROWS ONLY;
 	   
 		/*******************************************************************************
 		* End of SQL statment(s).
