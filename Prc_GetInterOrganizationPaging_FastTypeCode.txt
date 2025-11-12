@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-
+/****** Object:  StoredProcedure [edoc].[Prc_GetInterOrganizationPaging_FastTypeCode]    Script Date: 11/12/2025 2:30:36 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,7 +8,8 @@ GO
 
 ALTER PROCEDURE [edoc].[Prc_GetInterOrganizationPaging_FastTypeCode]
     @SearchText NVARCHAR(250) = NULL,
-    @OrgType NVARCHAR(MAX) = NULL
+    @OrgType NVARCHAR(MAX) = NULL,
+    @Type INT = NULL -- 1: Chủ trì, 2: Phối hợp
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -28,16 +29,28 @@ BEGIN
     -- Nếu OrgType khác -1000: chia @SearchText thành từng cặp 2 ký tự
     IF @SearchText IS NOT NULL AND @OrgType <> '-1000'
     BEGIN
-        DECLARE @i INT = 1;
-        DECLARE @len INT = LEN(@SearchText);
-        DECLARE @code NVARCHAR(10);
-
-        WHILE @i <= @len
+        IF @Type = 1 -- Chủ trì
         BEGIN
-            SET @code = SUBSTRING(@SearchText, @i, 2);
-            IF LEN(@code) = 2
-                INSERT INTO #SearchIds (Code) VALUES (@code);
-            SET @i += 2;
+            IF LTRIM(RTRIM(@SearchText)) <> ''
+            BEGIN
+                INSERT INTO #SearchIds (Code)
+                VALUES (LTRIM(RTRIM(@SearchText)));
+            END
+        END
+        
+        IF @Type = 2 -- Phối hợp
+        BEGIN
+            DECLARE @i INT = 1;
+            DECLARE @len INT = LEN(@SearchText);
+            DECLARE @code NVARCHAR(10);
+
+            WHILE @i <= @len
+            BEGIN
+                SET @code = SUBSTRING(@SearchText, @i, 2);
+                IF LEN(@code) = 2
+                    INSERT INTO #SearchIds (Code) VALUES (@code);
+                SET @i += 2;
+            END
         END
     END
 
@@ -79,4 +92,3 @@ BEGIN
     DROP TABLE #OrgTypeTable;
     DROP TABLE #SearchIds;
 END
-GO
