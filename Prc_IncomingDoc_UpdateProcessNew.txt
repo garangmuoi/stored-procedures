@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 11/5/2025 4:42:43 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNewDebug]    Script Date: 11/12/2025 10:31:58 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -99,7 +99,8 @@ BEGIN
 		*******************************************************************************/
 		-- Lấy IncomingDoc Status hiện tại
 		SET @UserSendStatus = (
-			SELECT TOP 1 Status
+			SELECT TOP 1
+				Status
 			FROM edoc.IncomingDoc WITH (NOLOCK)
 			WHERE Id = @IncomingDocId
 		);
@@ -155,6 +156,8 @@ BEGIN
 		SET @ReadDate = NULL;
 		SET @UserIncomingDocId = NULL;
 
+		-- Lấy UserIncomingDocId của người nhận
+		-- Lấy ReadDate của record hiện tại
 		SELECT TOP 1 
 			@UserIncomingDocId = Id, 
 			@ReadDate = ReadDate
@@ -162,24 +165,32 @@ BEGIN
 		WHERE IncomingDocId = @IncomingDocId 
 			AND (UserReceive = @UserId OR ReceiveRoleId = @RoleId)
 		
+		-- Check UserIncomingDocId của record hiện tại
 		IF @UserIncomingDocId IS NULL
 		BEGIN
-			SELECT @RoleCode = Code
+			-- Lấy RoleCode theo RoldeId của người nhận
+			SELECT
+				@RoleCode = Code
 			FROM dbo.Role WITH (NOLOCK) WHERE Id = @RoleId
 			
 			IF @RoleCode = 'ThuKyLanhDaoBo'
 			BEGIN
-				SELECT @UserReceive = ros.StaffId, @UserReceiveRoleId = ros.RoleId
+				-- Tìm lãnh đạo Bộ của thư ký đó
+				SELECT
+					@UserReceive = ros.StaffId, 
+					@UserReceiveRoleId = ros.RoleId
 				FROM dbo.RoleOfStaff AS ros WITH (NOLOCK)
 				JOIN dbo.Role AS r WITH (NOLOCK) ON ros.RoleId = r.Id
 				WHERE r.Code = 'LanhDaoBo'
 				AND ros.DepartmentId IN (
-					SELECT DepartmentId
+					SELECT
+						DepartmentId
 					FROM dbo.RoleOfStaff WITH (NOLOCK)
 					WHERE StaffId = @UserId
-					AND RoleId = @RoleId
+						AND RoleId = @RoleId
 				)
 				
+				-- Tìm UserIncomingDocId tương ứng với lãnh đạo Bộ
 				SELECT TOP 1 
 					@UserIncomingDocId = Id, 
 					@ReadDate = ReadDate
@@ -188,12 +199,14 @@ BEGIN
 					AND (UserReceive = @UserReceive AND UserReceiveRoleId = @UserReceiveRoleId);
 			END
 		END
-
-		-- Nếu đã nhận thì ghi lịch sử
+		
+		-- Nếu đã tìm thấy @UserIncomingDocId thì ghi lịch sử
 		IF @UserIncomingDocId IS NOT NULL
 		BEGIN
+			-- Tìm bản ghi lịch sử chi tiết tương ứng
 			SET @OpinionIncomingDocId = (
-				SELECT TOP 1 Id
+				SELECT TOP 1
+					Id
 				FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
 				WHERE IncomingDocId = @IncomingDocId 
 					AND UserIncomingDocId = @UserIncomingDocId 
@@ -202,6 +215,7 @@ BEGIN
 					AND OpinionUserId = @UserId
 			);
 
+			-- Nếu không có lịch sử chi tiết thì thêm mới
 			IF @OpinionIncomingDocId IS NULL
 			BEGIN
 				INSERT INTO edoc.OpinionIncomingDoc
@@ -229,6 +243,7 @@ BEGIN
 			END
 			ELSE
 			BEGIN
+				-- Nếu có lịch sử chi tiết
 				IF @OpinionStatus = 6
 				BEGIN
 					IF @ReadDate IS NULL -- Chưa đọc
@@ -240,15 +255,46 @@ BEGIN
 				END
 				ELSE
 				BEGIN
-					IF @OpinionStatus IS NOT NULL
-                    BEGIN
-						UPDATE edoc.OpinionIncomingDoc 
-						SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
-						WHERE Id = @OpinionIncomingDocId
+					-- Nếu là Ý kiến thì phải thêm mới
+					IF @OpinionType = 1
+					BEGIN
+						INSERT INTO edoc.OpinionIncomingDoc
+						(
+							IncomingDocId,
+							UserIncomingDocId,
+							OpinionUserId,
+							OpinionUserRoleId,
+							Opinion,
+							Status,
+							OpinionDate,
+							OpinionType
+						)
+						VALUES
+						(
+							@IncomingDocId, 
+							@UserIncomingDocId, 
+							@UserId, 
+							@RoleId, 
+							@Opinion, 
+							@OpinionStatus, 
+							@current_date, 
+							@OpinionType
+						);
+					END
+					ELSE
+					BEGIN
+						-- Nếu là Lịch sử thì cập nhật
+						IF @OpinionStatus IS NOT NULL
+						BEGIN
+							UPDATE edoc.OpinionIncomingDoc 
+							SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+							WHERE Id = @OpinionIncomingDocId
+						END
 					END
 				END
 			END
 
+			-- Cập nhật lại trạng thái của bản ghi lịch sử chuyển
 			IF @UserIncomingDocStatus IS NOT NULL
 			BEGIN
 				IF @OpinionStatus = 6
@@ -285,11 +331,13 @@ BEGIN
 		
 		-- Lấy UnitId của current từ Role theo RoleId
 		SET @ReceiveRoleUnitId = (
-			SELECT TOP 1 UnitId
+			SELECT TOP 1
+				UnitId
 			FROM dbo.Role WITH (NOLOCK)
 			WHERE Id = @RoleId
 		);
 
+		-- Chuyển cho người kế tiếp
 		-- Nếu có chuyển cho Role
 		IF @TransferRoleCode IS NOT NULL
 		BEGIN
@@ -317,7 +365,8 @@ BEGIN
 				IF @ReceiveRoleUnitId IS NOT NULL
 				BEGIN
 					SET @ReceiveRoleUnitName = (
-						SELECT TOP 1 Name
+						SELECT TOP 1
+							Name
 						FROM dbo.Department WITH (NOLOCK)
 						WHERE Id = @ReceiveRoleUnitId
 					);
@@ -377,13 +426,18 @@ BEGIN
 				END
             END
 
-			-- Tạo mới lịch sử chi tiết
+			-- Check xem đã có lịch sử chi tiết chưa
 			SET @OpinionIncomingDocId = (
-				SELECT TOP 1 Id
+				SELECT TOP 1
+					Id
 				FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
-				WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
+				WHERE IncomingDocId = @IncomingDocId 
+					AND UserIncomingDocId = @UserIncomingDocId 
+					AND OpinionUserRoleId = @RoleId 
+					AND OpinionType = @OpinionType
 			);
 
+			-- Tạo mới lịch sử chi tiết
 			IF @OpinionIncomingDocId IS NULL
 			BEGIN
 				INSERT INTO edoc.OpinionIncomingDoc
@@ -412,7 +466,7 @@ BEGIN
 			ELSE
 			BEGIN
 				UPDATE edoc.OpinionIncomingDoc 
-				SET Opinion = @Opinion, Status = @OpinionStatus, OpinionDate = @current_date 
+				SET Opinion = IIF(@UserSendStatus = 21, @TransferOpinion, @Opinion), Status = @OpinionStatus, OpinionDate = @current_date 
 				WHERE Id = @OpinionIncomingDocId
 			END
 		END		
@@ -435,7 +489,8 @@ BEGIN
 				IF @UserIncomingDocId IS NULL
 				BEGIN
 					SET @ReceiveRoleUnitId = (
-						SELECT TOP 1 UnitId
+						SELECT TOP 1
+							UnitId
 						FROM dbo.Role WITH (NOLOCK)
 						WHERE Id = @RecipientRoleId
 					);
@@ -444,7 +499,8 @@ BEGIN
 					IF @ReceiveRoleUnitId IS NOT NULL
 					BEGIN
 						SET @ReceiveRoleUnitName = (
-							SELECT TOP 1 Name
+							SELECT TOP 1
+								Name
 							FROM dbo.Department WITH (NOLOCK)
 							WHERE Id = @ReceiveRoleUnitId
 						);
@@ -514,7 +570,8 @@ BEGIN
 				BEGIN
 					-- Tạo mới lịch sử chi tiết
 					SET @OpinionIncomingDocId = (
-						SELECT TOP 1 Id
+						SELECT TOP 1
+							Id
 						FROM edoc.OpinionIncomingDoc WITH (NOLOCK)
 						WHERE IncomingDocId = @IncomingDocId AND UserIncomingDocId = @UserIncomingDocId AND OpinionUserRoleId = @RoleId AND OpinionType = @OpinionType
 					);

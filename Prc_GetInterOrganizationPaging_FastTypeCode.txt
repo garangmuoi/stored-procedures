@@ -5,28 +5,44 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER PROCEDURE [edoc].[Prc_GetInterOrganizationPaging_FastTypeCode]
-    @PageNumber INT = 1,
-    @PageSize INT = 10,
     @SearchText NVARCHAR(250) = NULL,
     @OrgType NVARCHAR(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Tạo bảng tạm vật lý
+    -- Tạo bảng tạm
     CREATE TABLE #OrgTypeTable (OrgType INT);
     CREATE TABLE #SearchIds (Code NVARCHAR(250));
 
-
+    -- Nếu OrgType có giá trị hợp lệ (khác -1000)
     IF @OrgType IS NOT NULL AND @OrgType <> '-1000'
     BEGIN
         INSERT INTO #OrgTypeTable (OrgType)
         SELECT CAST(value AS INT)
         FROM dbo.SplitString(@OrgType, ',');
     END
-    
-    IF @SearchText IS NOT NULL
+
+    -- Nếu OrgType khác -1000: chia @SearchText thành từng cặp 2 ký tự
+    IF @SearchText IS NOT NULL AND @OrgType <> '-1000'
+    BEGIN
+        DECLARE @i INT = 1;
+        DECLARE @len INT = LEN(@SearchText);
+        DECLARE @code NVARCHAR(10);
+
+        WHILE @i <= @len
+        BEGIN
+            SET @code = SUBSTRING(@SearchText, @i, 2);
+            IF LEN(@code) = 2
+                INSERT INTO #SearchIds (Code) VALUES (@code);
+            SET @i += 2;
+        END
+    END
+
+    -- Nếu OrgType = -1000: chia @SearchText theo dấu phẩy
+    IF @SearchText IS NOT NULL AND @OrgType = '-1000'
     BEGIN
         INSERT INTO #SearchIds (Code)
         SELECT LTRIM(RTRIM(value))
@@ -34,6 +50,7 @@ BEGIN
         WHERE LTRIM(RTRIM(value)) <> '';
     END
 
+    -- Lấy dữ liệu kết quả
     SELECT
         OrganID,
         OrganAdd,
@@ -48,15 +65,18 @@ BEGIN
             OR
             (@OrgType <> '-1000' AND
                 (
-                @SearchText IS NULL
-                OR (dbo.fRemoveDiacritics(FastTypeCode) IN (SELECT dbo.fRemoveDiacritics(Code) FROM #SearchIds))
+                    @SearchText IS NULL
+                    OR (dbo.fRemoveDiacritics(FastTypeCode) IN (
+                        SELECT dbo.fRemoveDiacritics(Code) FROM #SearchIds
+                    ))
                 )
                 AND (@OrgType IS NULL OR OrgType IN (SELECT OrgType FROM #OrgTypeTable))
             )
         )
     ORDER BY 
-        InOrder ASC
+        InOrder ASC;
 
     DROP TABLE #OrgTypeTable;
     DROP TABLE #SearchIds;
 END
+GO
