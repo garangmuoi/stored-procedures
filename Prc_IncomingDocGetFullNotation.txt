@@ -1,0 +1,70 @@
+ALTER PROCEDURE [edoc].[Prc_IncomingDocGetFullNotation]
+    @Notation NVARCHAR(250),
+    @UnitSend NVARCHAR(500),
+    @NotationText NVARCHAR(250) = NULL,
+    @PublishDate DATETIME = NULL
+    
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        DECLARE @dinamic_sql NVARCHAR(MAX) = N'';
+        DECLARE @params NVARCHAR(MAX);
+
+        SET @dinamic_sql = N'SELECT * FROM edoc.IncomingDoc WHERE Notation = LTRIM(RTRIM(@Notation)) AND UnitSend = LTRIM(RTRIM(@UnitSend)) ';
+
+        IF @NotationText IS NOT NULL
+            SET @dinamic_sql += N'AND NotationText = LTRIM(RTRIM(@NotationText)) ';
+        ELSE
+            SET @dinamic_sql += N'AND NotationText IS NULL ';
+
+        IF @PublishDate IS NOT NULL
+            SET @dinamic_sql += N'AND PublishDate = @PublishDate ';
+        ELSE
+            SET @dinamic_sql += N'AND PublishDate IS NULL ';
+
+        
+        SET @params = N'@Notation NVARCHAR(250), @NotationText NVARCHAR(250), @UnitSend NVARCHAR(500), @PublishDate DATETIME';
+
+        EXEC sp_executesql 
+            @dinamic_sql,
+            @params,
+            @Notation = @Notation,
+            @NotationText = @NotationText,
+            @UnitSend = @UnitSend,
+            @PublishDate = @PublishDate;
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX),
+                @ErrorNumber INT,
+                @ErrorSeverity INT,
+                @ErrorState INT,
+                @ErrorLine INT,
+                @ErrorProcedure NVARCHAR(200);
+
+        SELECT @ErrorNumber = ERROR_NUMBER(),
+               @ErrorSeverity = ERROR_SEVERITY(),
+               @ErrorState = ERROR_STATE(),
+               @ErrorLine = ERROR_LINE(),
+               @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+
+        SELECT @ErrorMessage = CONCAT(N'Error %d, Level %d, State %d, Procedure %s, Line %d, Message: ', ERROR_MESSAGE());
+
+        IF (@ErrorState = 0)
+            SET @ErrorState = 1;
+
+        RAISERROR(
+            @ErrorMessage,
+            @ErrorSeverity,
+            @ErrorState,
+            @ErrorNumber,
+            @ErrorSeverity,
+            @ErrorState,
+            @ErrorProcedure,
+            @ErrorLine
+        );
+    END CATCH;
+
+    SET NOCOUNT OFF;
+END;
