@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 9/29/2025 11:35:41 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 11/13/2025 11:31:10 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -15,6 +15,7 @@ ALTER PROCEDURE [edoc].[Prc_UserIncomingDoc_Recall]
     @UserId INT,
     @RoleId INT,
     @UserIncomingDocs XML = NULL,
+    @IncomingDocId BIGINT = NULL,
     @Opinion NVARCHAR(MAX)
 AS
 BEGIN
@@ -24,49 +25,63 @@ BEGIN
         -- All other declarations and initialisation
         --
         DECLARE @current_date DATETIME = GETDATE(),
-                @OpinionIncomingDocId INT;
+                @OpinionIncomingDocId INT,
+                @RoleCode NVARCHAR(100),
+                @UserIncomingDocId BIGINT,
+                @UserSendStatus INT,
+                @TotalRecall INT,
+                @TotalTransfer INT;
 
-        -- Declare temp table to parse Recipients
-		IF OBJECT_ID('tempdb..#UserIncomingDocs') IS NOT NULL
-			DROP TABLE UserIncomingDocs;
-		CREATE TABLE #UserIncomingDocs
-		(
-			UserIncomingDocId BIGINT,
-			IncomingDocId BIGINT
-		);
+        SELECT @RoleCode = Code
+        FROM dbo.Role
+        WHERE Id = @RoleId
 
-		-- Parse the XML into the temp table UserIncomingDocs
-		INSERT INTO #UserIncomingDocs (UserIncomingDocId, IncomingDocId)
-		SELECT 
-			x.v.value('(UserIncomingDocId)[1]', 'INT') AS UserIncomingDocId,
-			x.v.value('(IncomingDocId)[1]', 'INT') AS IncomingDocId
-		FROM @UserIncomingDocs.nodes('/UserIncomingDocs/UserIncomingDoc') x(v);
+        IF @UserIncomingDocs IS NOT NULL
+        BEGIN
+            -- Declare temp table to parse Recipients
+		    IF OBJECT_ID('tempdb..#UserIncomingDocs') IS NOT NULL
+			    DROP TABLE UserIncomingDocs;
+		    CREATE TABLE #UserIncomingDocs
+		    (
+			    UserIncomingDocId BIGINT,
+			    IncomingDocId BIGINT
+		    );
 
-		-- Cursor to iterate over Recipients
-		DECLARE incoming_cursor CURSOR FOR
-			SELECT UserIncomingDocId, IncomingDocId
-			FROM #UserIncomingDocs
-			WHERE UserIncomingDocId IS NOT NULL;
+		    -- Parse the XML into the temp table UserIncomingDocs
+		    INSERT INTO #UserIncomingDocs (UserIncomingDocId, IncomingDocId)
+		    SELECT 
+			    x.v.value('(UserIncomingDocId)[1]', 'INT') AS UserIncomingDocId,
+			    x.v.value('(IncomingDocId)[1]', 'INT') AS IncomingDocId
+		    FROM @UserIncomingDocs.nodes('/UserIncomingDocs/UserIncomingDoc') x(v);
 
-		DECLARE @UserIncomingDocId BIGINT,
-				@IncomingDocId BIGINT;
+		    -- Cursor to iterate over Recipients
+		    DECLARE incoming_cursor CURSOR FOR
+			    SELECT UserIncomingDocId, IncomingDocId
+			    FROM #UserIncomingDocs
+			    WHERE UserIncomingDocId IS NOT NULL;
 
-		OPEN incoming_cursor;
-		FETCH NEXT FROM incoming_cursor 
-		INTO @UserIncomingDocId, @IncomingDocId;
+		    OPEN incoming_cursor;
+		    FETCH NEXT FROM incoming_cursor 
+		    INTO @UserIncomingDocId, @IncomingDocId;
 
-		WHILE @@FETCH_STATUS = 0
-		BEGIN
-            UPDATE edoc.IncomingDoc SET Status = 13 WHERE Id = @IncomingDocId; -- Status = 13 Lấy Lại Văn Bản
+		    WHILE @@FETCH_STATUS = 0
+		    BEGIN
+                SET @UserSendStatus = NULL;
+                SELECT TOP 1 @UserSendStatus = UserSendStatus
+                FROM edoc.UserIncomingDoc
+                WHERE Id = @UserIncomingDocId;
 
-            UPDATE edoc.UserIncomingDoc SET Status = 4 WHERE Id = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
+                UPDATE edoc.UserIncomingDoc
+                SET
+                    Status = 4,  -- Status = 4 Bị Thu Hồi
+                    ModifiedDate = @current_date, 
+                    ModifiedUserId = @UserId
+                WHERE Id = @UserIncomingDocId;
 
-            --UPDATE edoc.OpinionIncomingDoc SET Status = 4, Opinion = @Opinion WHERE 
-            --    IncomingDocId = @IncomingDocId 
-            --    AND UserIncomingDocId = @UserIncomingDocId; -- Status = 4 Bị Thu Hồi
-
-            SET @OpinionIncomingDocId = NULL;
-            SELECT TOP 1 @OpinionIncomingDocId = o.Id FROM edoc.OpinionIncomingDoc as o 
+                SET @OpinionIncomingDocId = NULL;
+                SELECT TOP 1 
+                    @OpinionIncomingDocId = o.Id 
+                FROM edoc.OpinionIncomingDoc as o 
                 WHERE o.IncomingDocId = @IncomingDocId 
                     and o.UserIncomingDocId = @UserIncomingDocId
                     and o.OpinionUserId = @UserId
@@ -74,38 +89,155 @@ BEGIN
                     and o.Status = 4
                     and o.OpinionType = 2
 
-            IF (@OpinionIncomingDocId IS NULL)
-            BEGIN
-                INSERT INTO edoc.OpinionIncomingDoc
-			    (
-				    IncomingDocId,
-				    UserIncomingDocId,
-				    OpinionUserId,
-				    OpinionUserRoleId,
-				    Opinion,
-				    Status,
-				    OpinionDate,
-				    OpinionType
-			    )
-			    VALUES
-			    (
-				    @IncomingDocId, 
-				    @UserIncomingDocId, 
-				    @UserId, 
-				    @RoleId, 
-				    @Opinion, 
-				    4,  -- Status = 4 Bị Thu Hồi
-				    @current_date, 
-				    2   -- Lịch sử
-			    );
-            END
+                IF (@OpinionIncomingDocId IS NULL)
+                BEGIN
+                    INSERT INTO edoc.OpinionIncomingDoc
+			        (
+				        IncomingDocId,
+				        UserIncomingDocId,
+				        OpinionUserId,
+				        OpinionUserRoleId,
+				        Opinion,
+				        Status,
+				        OpinionDate,
+				        OpinionType
+			        )
+			        VALUES
+			        (
+				        @IncomingDocId, 
+				        @UserIncomingDocId, 
+				        @UserId, 
+				        @RoleId, 
+				        @Opinion, 
+				        4,  -- Status = 4 Bị Thu Hồi
+				        @current_date, 
+				        2   -- Lịch sử
+			        );
+                END
+                ELSE
+                BEGIN
+                    UPDATE edoc.OpinionIncomingDoc 
+                    SET 
+                        Status = 4,  -- Status = 4 Bị Thu Hồi
+                        OpinionDate = @current_date, 
+                        Opinion = @Opinion
+                    WHERE Id = @OpinionIncomingDocId
+                END
 
-            FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId;
-		END
+                FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId;
+		    END
 		
-        -- Clean up cursor
-        CLOSE incoming_cursor;
-		DEALLOCATE incoming_cursor;
+            -- Clean up cursor
+            CLOSE incoming_cursor;
+		    DEALLOCATE incoming_cursor;
+
+            IF @RoleCode = 'ThuKyLanhDaoBo'
+                UPDATE edoc.IncomingDoc 
+                SET 
+                    Status = 41,  -- Status = 41 Thư ký Lãnh đạo Bộ Thu Hồi
+                    ModifiedDate = @current_date, 
+                    ModifiedUserId = @UserId
+                WHERE Id = @IncomingDocId; -- Status = = 41 Thư ký lãnh đạo bộ Thu hồi
+            ELSE
+            BEGIN
+                -- Khác ThuKyLanhDaoBo
+                SELECT @TotalTransfer = COUNT(*) FROM edoc.UserIncomingDoc WHERE IncomingDocId = @IncomingDocId
+
+                SELECT @TotalRecall = COUNT(*) FROM edoc.UserIncomingDoc WHERE IncomingDocId = @IncomingDocId AND Status = 4
+
+                IF @TotalTransfer = @TotalRecall
+                    UPDATE edoc.IncomingDoc 
+                    SET 
+                        Status = 13, -- Status = 13 Thu hồi
+                        ModifiedDate = @current_date, 
+                        ModifiedUserId = @UserId 
+                    WHERE Id = @IncomingDocId
+            END
+        END
+        ELSE
+        BEGIN
+            -- Không có @UserIncomingDocs
+            IF @IncomingDocId IS NOT NULL
+            BEGIN
+                IF @RoleCode = 'VanThuDonVi' OR @RoleCode = 'LanhDaoHanhChinh'
+                    UPDATE edoc.IncomingDoc 
+                    SET 
+                        Status = 13, -- Status = 13 Thu hồi
+                        ModifiedDate = @current_date, 
+                        ModifiedUserId = @UserId 
+                    WHERE Id = @IncomingDocId
+
+                UPDATE edoc.UserIncomingDoc
+                SET 
+                    Status = 4, -- Status = 4 Bị Thu Hồi
+                    ModifiedDate = @current_date,
+                    ModifiedUserId = @UserId
+                WHERE IncomingDocId = @IncomingDocId
+                --AND ProsessRoleId IN (1,2,3,4)
+
+                DECLARE cur_loop CURSOR FOR
+                    SELECT Id 
+                    FROM edoc.UserIncomingDoc
+                    WHERE IncomingDocId = @IncomingDocId 
+                      AND Status = 4;
+
+                OPEN cur_loop;
+                FETCH NEXT FROM cur_loop INTO @UserIncomingDocId;
+
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    SET @OpinionIncomingDocId = NULL;
+                    SELECT TOP 1 @OpinionIncomingDocId = o.Id 
+                    FROM edoc.OpinionIncomingDoc AS o 
+                    WHERE o.IncomingDocId = @IncomingDocId 
+                        AND o.UserIncomingDocId = @UserIncomingDocId
+                        AND o.OpinionUserId = @UserId
+                        AND o.OpinionUserRoleId = @RoleId
+                        AND o.Status = 4
+                        AND o.OpinionType = 2;
+
+                    IF (@OpinionIncomingDocId IS NULL)
+                    BEGIN
+                        INSERT INTO edoc.OpinionIncomingDoc
+                        (
+                            IncomingDocId,
+                            UserIncomingDocId,
+                            OpinionUserId,
+                            OpinionUserRoleId,
+                            Opinion,
+                            Status,
+                            OpinionDate,
+                            OpinionType
+                        )
+                        VALUES
+                        (
+                            @IncomingDocId, 
+                            @UserIncomingDocId, 
+                            @UserId, 
+                            @RoleId, 
+                            @Opinion, 
+                            4,  -- Bị Thu Hồi
+                            @current_date, 
+                            2   -- Lịch sử
+                        );
+                    END
+                    ELSE
+                    BEGIN
+                        UPDATE edoc.OpinionIncomingDoc 
+                        SET 
+                            Status = 4, 
+                            OpinionDate = @current_date, 
+                            Opinion = @Opinion 
+                        WHERE Id = @OpinionIncomingDocId
+                    END
+
+                    FETCH NEXT FROM cur_loop INTO @UserIncomingDocId;
+                END
+
+                CLOSE cur_loop;
+                DEALLOCATE cur_loop;
+            END
+        END
 
     COMMIT TRANSACTION;
     END TRY
