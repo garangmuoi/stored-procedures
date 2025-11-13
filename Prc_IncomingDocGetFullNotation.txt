@@ -1,8 +1,16 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetFullNotation]    Script Date: 11/13/2025 4:33:47 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 ALTER PROCEDURE [edoc].[Prc_IncomingDocGetFullNotation]
     @Notation NVARCHAR(250),
     @UnitSend NVARCHAR(500),
     @NotationText NVARCHAR(250) = NULL,
-    @PublishDate DATETIME = NULL
+    @PublishDate DATETIME = NULL,
+    @IncomingDocId BIGINT = NULL
     
 AS
 BEGIN
@@ -12,7 +20,13 @@ BEGIN
         DECLARE @dinamic_sql NVARCHAR(MAX) = N'';
         DECLARE @params NVARCHAR(MAX);
 
-        SET @dinamic_sql = N'SELECT * FROM edoc.IncomingDoc WHERE Notation = LTRIM(RTRIM(@Notation)) AND UnitSend = LTRIM(RTRIM(@UnitSend)) ';
+        SET @dinamic_sql = N'
+            SELECT 
+                Id, Notation, NotationText, UnitSend, PublishDate, PublishUnit, Abstract 
+            FROM edoc.IncomingDoc 
+            WHERE Notation = LTRIM(RTRIM(@Notation)) 
+            AND UnitSend = LTRIM(RTRIM(@UnitSend))
+            AND (@IncomingDocId IS NULL OR Id <> @IncomingDocId) ';
 
         IF @NotationText IS NOT NULL
             SET @dinamic_sql += N'AND NotationText = LTRIM(RTRIM(@NotationText)) ';
@@ -25,7 +39,7 @@ BEGIN
             SET @dinamic_sql += N'AND PublishDate IS NULL ';
 
         
-        SET @params = N'@Notation NVARCHAR(250), @NotationText NVARCHAR(250), @UnitSend NVARCHAR(500), @PublishDate DATETIME';
+        SET @params = N'@Notation NVARCHAR(250), @NotationText NVARCHAR(250), @UnitSend NVARCHAR(500), @PublishDate DATETIME, @IncomingDocId BIGINT';
 
         EXEC sp_executesql 
             @dinamic_sql,
@@ -33,7 +47,8 @@ BEGIN
             @Notation = @Notation,
             @NotationText = @NotationText,
             @UnitSend = @UnitSend,
-            @PublishDate = @PublishDate;
+            @PublishDate = @PublishDate,
+            @IncomingDocId = @IncomingDocId;
     END TRY
     BEGIN CATCH
         DECLARE @ErrorMessage NVARCHAR(MAX),
