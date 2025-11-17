@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetFullNotation]    Script Date: 11/13/2025 4:33:47 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetFullNotation]    Script Date: 11/17/2025 1:32:03 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,6 +8,7 @@ GO
 ALTER PROCEDURE [edoc].[Prc_IncomingDocGetFullNotation]
     @Notation NVARCHAR(250),
     @UnitSend NVARCHAR(500),
+    @RoleId INT,
     @NotationText NVARCHAR(250) = NULL,
     @PublishDate DATETIME = NULL,
     @IncomingDocId BIGINT = NULL
@@ -17,8 +18,14 @@ BEGIN
     SET NOCOUNT ON;
 
     BEGIN TRY
-        DECLARE @dinamic_sql NVARCHAR(MAX) = N'';
-        DECLARE @params NVARCHAR(MAX);
+        DECLARE @dinamic_sql NVARCHAR(MAX) = N'',
+                @params NVARCHAR(MAX),
+                @UnitId INT;
+
+        SELECT TOP 1
+            @UnitId = UnitId
+        FROM dbo.Role
+        WHERE Id = @RoleId
 
         SET @dinamic_sql = N'
             SELECT 
@@ -26,6 +33,7 @@ BEGIN
             FROM edoc.IncomingDoc 
             WHERE Notation = LTRIM(RTRIM(@Notation)) 
             AND UnitSend = LTRIM(RTRIM(@UnitSend))
+            AND UnitId = @UnitId
             AND (@IncomingDocId IS NULL OR Id <> @IncomingDocId) ';
 
         IF @NotationText IS NOT NULL
@@ -39,7 +47,8 @@ BEGIN
             SET @dinamic_sql += N'AND PublishDate IS NULL ';
 
         
-        SET @params = N'@Notation NVARCHAR(250), @NotationText NVARCHAR(250), @UnitSend NVARCHAR(500), @PublishDate DATETIME, @IncomingDocId BIGINT';
+        SET @params = N'@Notation NVARCHAR(250), @NotationText NVARCHAR(250), @UnitSend NVARCHAR(500), 
+                        @RoleId INT, @UnitId INT, @PublishDate DATETIME, @IncomingDocId BIGINT';
 
         EXEC sp_executesql 
             @dinamic_sql,
@@ -47,6 +56,8 @@ BEGIN
             @Notation = @Notation,
             @NotationText = @NotationText,
             @UnitSend = @UnitSend,
+            @RoleId = @RoleId,
+            @UnitId = @UnitId,
             @PublishDate = @PublishDate,
             @IncomingDocId = @IncomingDocId;
     END TRY
