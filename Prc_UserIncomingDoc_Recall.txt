@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 11/13/2025 11:31:10 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 11/19/2025 7:00:42 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -78,7 +78,8 @@ BEGIN
 
 		    WHILE @@FETCH_STATUS = 0
 		    BEGIN
-                -- Lấy danh sách Id liên quan
+
+                -- Lấy danh sách UserIncomingDocId liên quan
                 INSERT INTO #UserIncomingAffected (UserIncomingDocId)
                 SELECT Id FROM edoc.UserIncomingDoc
                 WHERE Id = @UserIncomingDocId 
@@ -135,31 +136,38 @@ BEGIN
                       AND o.OpinionType = 2
                 );
 
-                FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId, @UserSendStatus;
-		    END
-		
-            -- Clean up cursor
-            CLOSE incoming_cursor;
-		    DEALLOCATE incoming_cursor;
-
-            IF @RoleCode = 'ThuKyLanhDaoBo'
+                IF @RoleCode = 'ThuKyLanhDaoBo'
                 UPDATE edoc.IncomingDoc 
                 SET 
                     Status = 41,  -- Status = 41 Thư ký Lãnh đạo Bộ Thu Hồi
                     ModifiedDate = @current_date, 
                     ModifiedUserId = @UserId
                 WHERE Id = @IncomingDocId; -- Status = = 41 Thư ký lãnh đạo bộ Thu hồi
-            ELSE
-            BEGIN
-                -- Khác ThuKyLanhDaoBo
-                IF @UserSendStatus IS NOT NULL
-                    UPDATE edoc.IncomingDoc 
-                    SET 
-                        Status = @UserSendStatus,
-                        ModifiedDate = @current_date, 
-                        ModifiedUserId = @UserId 
-                    WHERE Id = @IncomingDocId
-            END
+                ELSE
+                BEGIN
+                    -- Khác ThuKyLanhDaoBo
+                    IF @UserSendStatus IS NOT NULL
+                        UPDATE edoc.IncomingDoc 
+                        SET 
+                            Status = IIF(@UserSendStatus = 0, 1, @UserSendStatus),
+                            ModifiedDate = @current_date, 
+                            ModifiedUserId = @UserId 
+                        WHERE Id = @IncomingDocId
+                    ELSE
+                        UPDATE edoc.IncomingDoc 
+                        SET 
+                            Status = 13, --Status = 13 Văn bản bị thu hồi
+                            ModifiedDate = @current_date, 
+                            ModifiedUserId = @UserId 
+                        WHERE Id = @IncomingDocId
+                END
+
+                FETCH NEXT FROM incoming_cursor INTO @UserIncomingDocId, @IncomingDocId, @UserSendStatus;
+		    END
+		
+            -- Clean up cursor
+            CLOSE incoming_cursor;
+		    DEALLOCATE incoming_cursor;
         END
         ELSE
         BEGIN
@@ -169,7 +177,7 @@ BEGIN
                 IF @RoleCode = 'VanThuDonVi' OR @RoleCode = 'LanhDaoHanhChinh'
                     UPDATE edoc.IncomingDoc 
                     SET 
-                        Status = 13, -- Status = 13 Thu hồi
+                        Status = IIF(@RoleCode = 'VanThuDonVi', 1, 5),
                         ModifiedDate = @current_date, 
                         ModifiedUserId = @UserId 
                     WHERE Id = @IncomingDocId
@@ -180,7 +188,6 @@ BEGIN
                     ModifiedDate = @current_date,
                     ModifiedUserId = @UserId
                 WHERE IncomingDocId = @IncomingDocId
-                --AND ProsessRoleId IN (1,2,3,4)
 
                 DECLARE cur_loop CURSOR FOR
                     SELECT Id 
@@ -194,6 +201,7 @@ BEGIN
                 WHILE @@FETCH_STATUS = 0
                 BEGIN
                     SET @OpinionIncomingDocId = NULL;
+                    
                     SELECT TOP 1 @OpinionIncomingDocId = o.Id 
                     FROM edoc.OpinionIncomingDoc AS o 
                     WHERE o.IncomingDocId = @IncomingDocId 
