@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 11/19/2025 7:00:42 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_Recall]    Script Date: 12/9/2025 2:31:52 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -137,12 +137,19 @@ BEGIN
                 );
 
                 IF @RoleCode = 'ThuKyLanhDaoBo'
-                UPDATE edoc.IncomingDoc 
-                SET 
-                    Status = 41,  -- Status = 41 Thư ký Lãnh đạo Bộ Thu Hồi
-                    ModifiedDate = @current_date, 
-                    ModifiedUserId = @UserId
-                WHERE Id = @IncomingDocId; -- Status = = 41 Thư ký lãnh đạo bộ Thu hồi
+                    UPDATE edoc.IncomingDoc 
+                    SET 
+                        Status = 41,  -- Status = 41 Thư ký Lãnh đạo Bộ Thu Hồi
+                        ModifiedDate = @current_date, 
+                        ModifiedUserId = @UserId
+                    WHERE Id = @IncomingDocId;
+                ELSE IF @RoleCode = 'VanThuBo'
+                    UPDATE edoc.IncomingDoc 
+                    SET 
+                        Status = 13,  -- Status = 13 Văn thư Bộ Thu Hồi
+                        ModifiedDate = @current_date, 
+                        ModifiedUserId = @UserId
+                    WHERE Id = @IncomingDocId;
                 ELSE
                 BEGIN
                     -- Khác ThuKyLanhDaoBo

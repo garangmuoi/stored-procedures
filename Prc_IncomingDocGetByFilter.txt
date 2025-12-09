@@ -1,0 +1,280 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByFilter]    Script Date: 12/9/2025 2:30:10 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [edoc].[Prc_IncomingDocGetByFilter]
+    @StartDate DATETIME = NULL,
+    @EndDate DATETIME = NULL,
+    @DocBookId INT = NULL,
+	@UnitSends XML = NULL,
+    @FilterType INT = NULL,
+	@Number INT = NULL,
+	@UnitId INT = NULL,
+	@Id BIGINT = NULL,
+	@ParentId BIGINT = NULL,
+	@StartNumber INT = NULL,
+	@EndNumber INT = NULL,
+	@DocBookIds XML = NULL,
+	@PageIndex INT = NULL,
+    @PageSize INT = NULL,
+	@ListStatus XML = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+		/*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+		IF @PageSize is NULL
+		BEGIN
+			SET @PageSize = 1000
+		END
+		
+		IF @PageIndex IS NULL
+		BEGIN
+			SET @PageIndex = 1
+		END
+
+		-- All other declarations and initialisation
+
+		DECLARE 
+				@PageLowerBound INT,
+				@PageUpperBound INT
+		SELECT	
+				@PageLowerBound = (@PageIndex - 1) * @PageSize,
+				@PageUpperBound = @PageSize - 1 + @PageLowerBound
+
+		/*----------*/
+		IF OBJECT_ID('tempdb..#UnitSends') IS NOT NULL
+			DROP TABLE #UnitSends;
+
+		CREATE TABLE #UnitSends (UnitSend NVARCHAR(255) PRIMARY KEY);
+
+		IF @UnitSends IS NOT NULL 
+		   AND CONVERT(NVARCHAR(MAX), @UnitSends) LIKE '<%'
+		BEGIN
+			INSERT INTO #UnitSends (UnitSend)
+			SELECT DISTINCT LTRIM(RTRIM(UnitSendValue))
+			FROM (
+				SELECT T.c.value('.', 'NVARCHAR(255)') AS UnitSendValue
+				FROM @UnitSends.nodes('/UnitSends/UnitSend') T(c)
+			) AS AllValues
+			WHERE UnitSendValue IS NOT NULL
+			  AND LTRIM(RTRIM(UnitSendValue)) <> '';
+		END
+
+		/*----------*/
+		IF OBJECT_ID('tempdb..#DocBookIds') IS NOT NULL
+			DROP TABLE #DocBookIds;
+
+		CREATE TABLE #DocBookIds (DocBookId INT PRIMARY KEY);
+
+		IF @DocBookIds IS NOT NULL
+		   AND @DocBookIds.exist('/DocBookIds/DocBookId') = 1
+		BEGIN
+			INSERT INTO #DocBookIds (DocBookId)
+			SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT)
+			FROM @DocBookIds.nodes('/DocBookIds/DocBookId') AS T(c)
+			WHERE T.c.value('.', 'NVARCHAR(50)') IS NOT NULL
+			  AND LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) <> ''
+			  AND TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT) IS NOT NULL;
+		END;
+
+		IF @DocBookId IS NOT NULL AND @DocBookId = 0
+			SET @DocBookId = NULL
+
+		/*----------*/
+		IF OBJECT_ID('tempdb..#ListStatus') IS NOT NULL
+			DROP TABLE #ListStatus;
+
+		CREATE TABLE #ListStatus (Status INT PRIMARY KEY);
+
+		IF @ListStatus IS NOT NULL
+		   AND @ListStatus.exist('/ListStatus/Status') = 1
+		BEGIN
+			INSERT INTO #ListStatus (Status)
+			SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT)
+			FROM @ListStatus.nodes('/ListStatus/Status') AS T(c)
+			WHERE T.c.value('.', 'NVARCHAR(50)') IS NOT NULL
+			  AND LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) <> ''
+			  AND TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT) IS NOT NULL;
+		END;
+
+		/*----------*/
+        SELECT 
+		Id
+		,UnitId
+		,ReceivedDate
+		,Number
+		,Notation
+		,NotationText
+		,Abstract
+		,PublishUnit
+		,PublishDate
+		,SignerRole
+		,Signer
+		,SignDate
+		,NumberPaper
+		,NumberCopies
+		,SecretId
+		,UrgentId
+		,Approver
+		,Approved
+		,Sents
+		,Recipients
+		,DocBookId
+		,DocTypeId
+		,DocFieldId
+		,IsHandling
+		,IsInterDoc
+		,IsUnitSend
+		,UnitSend
+		,ExpiredDate
+		,ID_VBLIENTHONG
+		,PreviousIncomingDocId
+		,PreviousUserIncomingDocId
+		,PreviousOutgoingDocId
+		,PreviousUserOutgoingDocId
+		,ModifiedUserId
+		,ModifiedDate
+		,CreatedUserRoleId
+		,CreatedUserId
+		,CreatedDate
+		,ReceivedPaperDate
+		,IsReceivedPaper
+		,ArchiveStatus
+		,DocumentCode
+		,MoveAnnouncement
+		,MoveAnnouncementDate
+		,IsDeleted
+		,ReceivedTypeId
+		,ReplyDocId
+		,ReplyNotation
+		,LeaderRecipientCode
+		,LeaderRecipient
+		,PresideRecipientCode
+		,PresideRecipient
+		,CoordinatedRecipientCode
+		,CoordinatedRecipient
+		,Note
+		,NeedFollow
+		,HasPaperCopy
+		,HasNoFile
+		,LanguageId
+		,PageCount
+		,PositionName
+		,Status
+		,ParentId
+		,ReturnStatus
+		,PrevStatus
+		,LeaderRecipientSuggest
+		,LeaderRecipientSuggestIds
+		,IsRead
+		,DraftUnitName
+		,MeetingStartDate
+		,MeetingEndDate
+		,MeetingMaster
+		,BusinessType
+		,NotificationIds
+		,NotificationNames
+		,ParentNumber
+		,OutgoingDocId
+		,MeetingLocation
+		,COUNT_BIG(*) OVER () AS TotalRowCount
+		FROM edoc.IncomingDoc
+        WHERE 
+            IsDeleted = 0
+            AND (@DocBookId IS NULL OR DocBookId = @DocBookId)
+			AND (@Number IS NULL OR Number = @Number)
+			AND (@UnitId IS NULL OR UnitId = @UnitId)
+			AND (
+					@StartDate IS NULL 
+					OR CONVERT(date, ReceivedDate) >= CONVERT(date, @StartDate)
+				)
+			AND (
+					@EndDate IS NULL 
+					OR CONVERT(date, ReceivedDate) <= CONVERT(date, @EndDate)
+				)
+			AND (
+					@FilterType IS NULL
+					OR (
+						@FilterType IS NOT NULL
+						AND @UnitSends IS NOT NULL
+						AND EXISTS (
+							SELECT 1
+							FROM #UnitSends tmp
+							WHERE tmp.UnitSend = edoc.IncomingDoc.UnitSend
+						)
+					)
+				)
+			AND (
+					@FilterType IS NULL
+					OR (@FilterType = 1 AND LeaderRecipientCode IS NOT NULL) -- Công văn Trình lãnh đạo
+					OR (@FilterType = 2 AND LeaderRecipientCode IS NULL) -- Công văn Chuyển đơn vị
+					OR (@FilterType = 3 AND CoordinatedRecipientCode IS NOT NULL) -- Công văn Phối hợp
+					OR (@FilterType = 4 AND Status = -1) -- Công văn Bộ trả - Từ chối
+					OR (@FilterType = 5 AND @DocBookIds IS NOT NULL
+						AND EXISTS (
+							SELECT 1
+							FROM #DocBookIds tmp
+							WHERE tmp.DocBookId = edoc.IncomingDoc.DocBookId
+						)) -- Sổ mời họp
+					OR (@FilterType = 6 AND @ListStatus IS NOT NULL
+						AND EXISTS (
+							SELECT 1
+							FROM #ListStatus tmp
+							WHERE tmp.Status = edoc.IncomingDoc.Status
+						)) -- Thu hồi
+				)
+			AND (@Id IS NULL OR Id = @Id)
+			AND (@ParentId IS NULL OR ParentId = @ParentId)
+			AND (@StartNumber IS NULL OR Number >= @StartNumber)
+			AND (@EndNumber IS NULL OR Number <= @EndNumber)
+		ORDER BY
+			Id DESC
+		OFFSET @PageLowerBound ROWS FETCH NEXT @PageSize ROWS ONLY
+
+    /*******************************************************************************
+	* End of SQL statment(s).
+	*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+	   DECLARE @ErrorMessage NVARCHAR(MAX),
+			 @ErrorNumber INT,
+			 @ErrorSeverity INT,
+			 @ErrorState INT,
+			 @ErrorLine INT,
+			 @ErrorProcedure NVARCHAR(200);
+
+	   -- Assign variables to error-handling functions that capture information for RAISERROR.
+	   SELECT @ErrorNumber = ERROR_NUMBER(),
+			 @ErrorSeverity = ERROR_SEVERITY(),
+			 @ErrorState = ERROR_STATE(),
+			 @ErrorLine = ERROR_LINE(),
+			 @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+	   
+	   -- Build the message string that will contain original error information.
+	   SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, ' + 'Message: '+ ERROR_MESSAGE();
+	   
+	   -- Only set the error state if its been set to zero
+	   IF (@ErrorState = 0) SET @ErrorState = 1
+	   
+	   -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+	   RAISERROR (@ErrorMessage,
+				@ErrorSeverity,
+				@ErrorState,
+				@ErrorNumber,    -- parameter: original error number.
+				@ErrorSeverity,  -- parameter: original error severity.
+				@ErrorState,     -- parameter: original error state.
+				@ErrorProcedure, -- parameter: original error procedure name.
+				@ErrorLine       -- parameter: original error line number.
+		  );
+    END CATCH
+
+    SET NOCOUNT OFF
+END

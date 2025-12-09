@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNewDebug]    Script Date: 11/12/2025 10:31:58 AM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDoc_UpdateProcessNew]    Script Date: 12/9/2025 2:30:35 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -29,7 +29,8 @@ ALTER PROCEDURE [edoc].[Prc_IncomingDoc_UpdateProcessNew]
 	@Recipients XML = NULL, --Gửi cho cá nhân
 	@ExpiredDate DATETIME = NULL,
 	@DocBookId INT = NULL,
-	@ProsessRoleId INT = NULL
+	@ProsessRoleId INT = NULL,
+	@TransferUnitId INT = NULL
 AS
 BEGIN
     BEGIN TRY
@@ -329,13 +330,17 @@ BEGIN
 			END
 		END
 		
-		-- Lấy UnitId của current từ Role theo RoleId
-		SET @ReceiveRoleUnitId = (
-			SELECT TOP 1
-				UnitId
-			FROM dbo.Role WITH (NOLOCK)
-			WHERE Id = @RoleId
-		);
+		-- Nếu có TransferUnitId thì gán
+		-- Nếu không thì Lấy UnitId của current từ Role theo RoleId
+		IF @TransferUnitId IS NOT NULL
+			SET @ReceiveRoleUnitId = @TransferUnitId
+		ELSE
+			SET @ReceiveRoleUnitId = (
+				SELECT TOP 1
+					UnitId
+				FROM dbo.Role WITH (NOLOCK)
+				WHERE Id = @RoleId
+			);
 
 		-- Chuyển cho người kế tiếp
 		-- Nếu có chuyển cho Role

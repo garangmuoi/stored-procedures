@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_ReCallFromParentId]    Script Date: 9/29/2025 3:02:02 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_UserIncomingDoc_ReCallFromParentId]    Script Date: 12/9/2025 2:32:11 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -25,7 +25,27 @@ BEGIN
         -- All other declarations and initialisation
 		DECLARE @current_date DATETIME = GETDATE(),
 				@UnitId INT,
-				@ChildIncomingDocId INT;
+				@ChildIncomingDocId INT,
+				@RoleCode NVARCHAR(100);
+
+		DECLARE @LogStoreId uniqueidentifier = NEWID()
+
+		INSERT INTO [edoc].[ProcessLog]
+				   ([LogStoreId]
+				   ,[StepDescription]
+				   ,[LogMessage])
+		VALUES
+				   (@LogStoreId
+				   ,N'Prc_UserIncomingDoc_ReCallFromParentId'
+				   ,N' @IncomingDocId = ' + IIF(@IncomingDocId IS NULL, 'NULL', CAST(@IncomingDocId AS NVARCHAR(MAX)))
+				   + N' @UserId = ' + IIF(@UserId IS NULL, 'NULL', CAST(@UserId AS NVARCHAR(MAX)))
+				   + N' @RoleId = ' + IIF(@RoleId IS NULL, 'NULL', CAST(@RoleId AS NVARCHAR(MAX)))
+				   + N' @Opinion = ' + IIF(@Opinion IS NULL, 'NULL', CAST(@Opinion AS NVARCHAR(MAX)))
+				   )
+
+        SELECT @RoleCode = Code
+        FROM dbo.Role
+        WHERE Id = @RoleId
         --
         -- Declare temp table to parse Recipients
 		IF OBJECT_ID('tempdb..#RecipientCodes') IS NOT NULL
@@ -65,7 +85,10 @@ BEGIN
 				
 				IF(@ChildIncomingDocId IS NOT NULL)
 				BEGIN
-					UPDATE edoc.IncomingDoc SET Status = 13 WHERE Id = @ChildIncomingDocId; -- Status = 13 Lấy Lại Văn Bản
+					IF @RoleCode = 'ThuKyLanhDaoBo'
+						UPDATE edoc.IncomingDoc SET Status = 41 WHERE Id = @ChildIncomingDocId; -- Status = = 41 Thư ký lãnh đạo bộ Thu hồi
+					ELSE
+						UPDATE edoc.IncomingDoc SET Status = 13 WHERE Id = @ChildIncomingDocId; -- Status = 13 Lấy Lại Văn Bản
 					
 					UPDATE edoc.UserIncomingDoc SET Status = 4 WHERE IncomingDocId  = @ChildIncomingDocId; -- Status = 4 Bị Thu Hồi
 					

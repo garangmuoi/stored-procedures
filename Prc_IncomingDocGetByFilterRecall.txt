@@ -1,0 +1,218 @@
+USE [DHTN-2025]
+GO
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByFilterRecall]    Script Date: 12/9/2025 2:04:49 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [edoc].[Prc_IncomingDocGetByFilterRecall]
+    @StartDate DATETIME = NULL,
+    @EndDate DATETIME = NULL,
+	@PageIndex INT = NULL,
+    @PageSize INT = NULL,
+	@UnitIds XML = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+		/*******************************************************************************
+		* Add SQL statment(s) here.
+		* Build up some dynamic SQL to do the search
+		*******************************************************************************/
+		IF @PageSize is NULL
+		BEGIN
+			SET @PageSize = 1000
+		END
+		
+		IF @PageIndex IS NULL
+		BEGIN
+			SET @PageIndex = 1
+		END
+
+		-- All other declarations and initialisation
+
+		DECLARE 
+				@PageLowerBound INT,
+				@PageUpperBound INT
+		SELECT	
+				@PageLowerBound = (@PageIndex - 1) * @PageSize,
+				@PageUpperBound = @PageSize - 1 + @PageLowerBound
+
+		/*----------*/
+		IF OBJECT_ID('tempdb..#UnitIds') IS NOT NULL
+			DROP TABLE #UnitIds;
+
+		CREATE TABLE #UnitIds (UnitId INT PRIMARY KEY);
+
+		IF @UnitIds IS NOT NULL
+		   AND @UnitIds.exist('/UnitIds/UnitId') = 1
+		BEGIN
+			INSERT INTO #UnitIds (UnitId)
+			SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT)
+			FROM @UnitIds.nodes('/UnitIds/UnitId') AS T(c)
+			WHERE T.c.value('.', 'NVARCHAR(50)') IS NOT NULL
+			  AND LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) <> ''
+			  AND TRY_CAST(LTRIM(RTRIM(T.c.value('.', 'NVARCHAR(50)'))) AS INT) IS NOT NULL;
+		END;
+
+		/*----------*/
+		;WITH Incoming AS (
+			SELECT 
+				i.Id,
+				i.ParentId,
+				ISNULL(i.ParentId, i.Id) AS GroupId,
+				i.UnitId,
+				d.Name AS UnitName,
+				i.Number,
+				i.PublishDate,
+				i.UnitSend,
+				i.PublishUnit,
+				i.Notation,
+				i.NotationText,
+				i.Abstract,
+				i.Status,
+				i.ReceivedDate
+			FROM edoc.IncomingDoc i
+			LEFT JOIN dbo.Department d ON i.UnitId = d.Id
+			WHERE 
+				i.IsDeleted = 0
+				AND i.PublishDate IS NOT NULL
+				AND (
+						@StartDate IS NULL 
+						OR CONVERT(date, i.PublishDate) >= CONVERT(date, @StartDate)
+					)
+				AND (
+						@EndDate IS NULL 
+						OR CONVERT(date, i.PublishDate) <= CONVERT(date, @EndDate)
+					)
+		),
+		-- Danh sách Group (mỗi GroupId tương ứng 1 cha)
+		Parents AS (
+			SELECT DISTINCT
+				GroupId AS ParentDocId
+			FROM Incoming
+		),
+		-- Các Parent hợp lệ: parent.Status IN (13,41) OR có con với Status IN (13,41)
+		ValidParents AS (
+			SELECT p.ParentDocId
+			FROM Parents p
+			JOIN Incoming parent ON parent.Id = p.ParentDocId
+			WHERE
+				parent.Status IN (13,41)
+				OR EXISTS (
+					SELECT 1
+					FROM Incoming c
+					WHERE c.ParentId = p.ParentDocId
+					  AND c.Status IN (13,41)
+				)
+		),
+		-- Gom đơn vị con CHỈ từ các con có status = 13 hoặc 41
+		ChildUnits AS (
+			SELECT
+				i.GroupId,
+				STRING_AGG(i.UnitName, ', ') WITHIN GROUP (ORDER BY i.UnitName) AS ChildUnitNames
+			FROM Incoming i
+			WHERE i.ParentId IS NOT NULL
+			  AND i.Status IN (13,41)         -- <<-- CHỈ GỘP CÁC BẢN CON HỢP LỆ
+			GROUP BY i.GroupId
+		),
+		-- Lấy ngày RecallDate theo yêu cầu
+		Recall AS (
+			SELECT 
+				vp.ParentDocId,
+
+				-- Lấy ngày ModifiedDate con → ưu tiên con trước
+				(
+					SELECT TOP 1 u.ModifiedDate
+					FROM Incoming c
+					JOIN edoc.UserIncomingDoc u ON u.IncomingDocId = c.Id
+					WHERE c.ParentId = vp.ParentDocId
+					  AND u.Status = 4
+					ORDER BY u.ModifiedDate DESC
+				) AS ChildRecallDate,
+
+				-- Lấy ModifiedDate của cha
+				(
+					SELECT TOP 1 u2.ModifiedDate
+					FROM edoc.UserIncomingDoc u2
+					WHERE u2.IncomingDocId = vp.ParentDocId
+					  AND u2.Status = 4
+					ORDER BY u2.ModifiedDate DESC
+				) AS ParentRecallDate
+			FROM ValidParents vp
+		),
+		Final AS (
+			SELECT
+				parent.Id AS Id,
+				parent.UnitId AS UnitId,
+				parent.UnitName as UnitName,
+				ISNULL(child.ChildUnitNames, '') AS UnitRecallName,
+				parent.Number,
+				parent.PublishDate,
+				parent.UnitSend,
+				parent.PublishUnit,
+				parent.Notation,
+				parent.NotationText,
+				parent.Abstract,
+				parent.Status,
+				parent.ReceivedDate,
+				ISNULL(r.ChildRecallDate, r.ParentRecallDate) AS RecallDate,
+				ROW_NUMBER() OVER (ORDER BY parent.Id DESC) AS RowNum,
+				COUNT(*) OVER() AS TotalRowCount
+			FROM ValidParents vp
+			JOIN Incoming parent ON parent.Id = vp.ParentDocId
+			LEFT JOIN ChildUnits child ON child.GroupId = vp.ParentDocId
+			LEFT JOIN Recall r ON r.ParentDocId = vp.ParentDocId
+			WHERE
+				@UnitIds IS NULL
+				OR EXISTS (
+					SELECT 1 FROM #UnitIds t WHERE t.UnitId = parent.UnitId
+				)
+		)
+		SELECT *
+		FROM Final
+		WHERE RowNum BETWEEN @PageLowerBound + 1 AND @PageUpperBound + 1
+		ORDER BY Id DESC;
+
+
+
+    /*******************************************************************************
+	* End of SQL statment(s).
+	*******************************************************************************/
+    END TRY
+    BEGIN CATCH
+	   DECLARE @ErrorMessage NVARCHAR(MAX),
+			 @ErrorNumber INT,
+			 @ErrorSeverity INT,
+			 @ErrorState INT,
+			 @ErrorLine INT,
+			 @ErrorProcedure NVARCHAR(200);
+
+	   -- Assign variables to error-handling functions that capture information for RAISERROR.
+	   SELECT @ErrorNumber = ERROR_NUMBER(),
+			 @ErrorSeverity = ERROR_SEVERITY(),
+			 @ErrorState = ERROR_STATE(),
+			 @ErrorLine = ERROR_LINE(),
+			 @ErrorProcedure = ISNULL(ERROR_PROCEDURE(), '-');
+	   
+	   -- Build the message string that will contain original error information.
+	   SELECT @ErrorMessage = N'Error %d, Level %d, State %d, Procedure %s, Line %d, ' + 'Message: '+ ERROR_MESSAGE();
+	   
+	   -- Only set the error state if its been set to zero
+	   IF (@ErrorState = 0) SET @ErrorState = 1
+	   
+	   -- Raise an error: msg_str parameter of RAISERROR will contain the original error information.
+	   RAISERROR (@ErrorMessage,
+				@ErrorSeverity,
+				@ErrorState,
+				@ErrorNumber,    -- parameter: original error number.
+				@ErrorSeverity,  -- parameter: original error severity.
+				@ErrorState,     -- parameter: original error state.
+				@ErrorProcedure, -- parameter: original error procedure name.
+				@ErrorLine       -- parameter: original error line number.
+		  );
+    END CATCH
+
+    SET NOCOUNT OFF
+END
