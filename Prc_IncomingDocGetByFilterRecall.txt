@@ -1,6 +1,6 @@
 USE [DHTN-2025]
 GO
-/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByFilterRecall]    Script Date: 12/9/2025 2:04:49 PM ******/
+/****** Object:  StoredProcedure [edoc].[Prc_IncomingDocGetByFilterRecall]    Script Date: 12/9/2025 2:35:47 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -147,7 +147,7 @@ BEGIN
 				parent.Id AS Id,
 				parent.UnitId AS UnitId,
 				parent.UnitName as UnitName,
-				ISNULL(child.ChildUnitNames, '') AS UnitRecallName,
+				ISNULL(child.ChildUnitNames, parent.PublishUnit) AS UnitRecallName,
 				parent.Number,
 				parent.PublishDate,
 				parent.UnitSend,
